@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gestion Residentes Antu - Maqueta</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand-block">
+      <img class="brand-logo" src="./assets/antu-logo.png" alt="Hogar Antu">
+      <div>
+        <div class="brand">Hogar Antu</div>
+        <div class="subtitle">Gestion de residentes</div>
+      </div>
+    </div>
+    <div class="session">
+      <label for="roleSelect">Vista de usuario</label>
+      <select id="roleSelect"></select>
+      <button id="logoutBtn" class="btn ghost logout-btn">Cerrar sesión</button>
+    </div>
+  </header>
+
+  <div class="shell">
+    <aside class="sidebar">
+      <div id="roleBadge" class="role-badge"></div>
+      <nav id="menu" class="menu"></nav>
+    </aside>
+
+    <main class="content">
+      <section id="view"></section>
+    </main>
+  </div>
+
+  <div id="modal" class="modal-backdrop" aria-hidden="true">
+    <div class="modal">
+      <h2 id="modalTitle">Confirmar</h2>
+      <p id="modalText"></p>
+      <div class="modal-actions">
+        <button id="modalConfirm" class="btn primary">Guardar</button>
+        <button id="modalCancel" class="btn ghost">Volver y corregir</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="./data.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
