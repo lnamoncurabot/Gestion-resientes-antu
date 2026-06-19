@@ -1,24 +1,46 @@
-# Gestion Residentes Antu
+# Maqueta Web Local
 
-Proyecto para construir una plataforma web local de gestion de residentes de un centro geriatrico.
+Esta maqueta no requiere Node.js, MySQL ni MySQL Workbench.
 
-La documentacion inicial esta en la carpeta [docs](docs).
+## Opcion rapida
 
-## Estado actual
+Abrir directamente:
 
-Base documental inicial creada y maqueta HTML aprobada para los flujos principales.
+```text
+mockups/web/index.html
+```
 
-Componentes disponibles:
+## Opcion con servidor local
 
-- `docs`: documentacion funcional y tecnica.
-- `mockups/web`: maqueta HTML/CSS/JS revisable localmente.
-- `database`: scripts MySQL para crear estructura, datos iniciales y vistas.
-- `backend`: esqueleto inicial Node.js + Express + MySQL.
+Desde PowerShell, ejecutar:
 
-## Orden sugerido para continuar
+```powershell
+cd "C:\Users\luis namoncura\Documents\Gestión Residentes Antú\mockups\web"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\serve.ps1 -Port 4175
+```
 
-1. Ejecutar scripts SQL de `database` en MySQL Workbench.
-2. Copiar `backend/.env.example` como `backend/.env` y ajustar credenciales.
-3. Instalar dependencias del backend con `npm install`.
-4. Ejecutar API con `npm run dev`.
-5. Conectar la maqueta o futuro frontend real al API.
+Luego abrir:
+
+```text
+http://localhost:4175
+```
+
+## Que revisar
+
+- Confirmar que el logo del Hogar Antu aparezca en la barra superior.
+- Cambiar la vista de usuario desde el selector superior.
+- Confirmar que cada rol tenga su menu correcto.
+- Revisar ficha de residente.
+- Probar Registro CAM.
+- Habilitar secciones CAM: ciclos, medicamentos y observaciones.
+- Guardar un registro CAM y revisar `Mis registros`.
+- Revisar formularios de Directora Tecnica, Enfermero y Nutricionista.
+- Revisar panel administrador: residentes, alertas, rangos, usuarios, reportes y Power BI.
+
+## Nota
+
+La maqueta usa datos de ejemplo tomados del Excel y de los prototipos. Todavia no guarda en base de datos; eso corresponde a la siguiente etapa tecnica.
+
+## Activos visuales
+
+- Logo: `assets/antu-logo.png`.
