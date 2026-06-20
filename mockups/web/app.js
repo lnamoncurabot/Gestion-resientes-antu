@@ -1,4 +1,6 @@
 const state = {
+  isAuthenticated: false,
+  loggedUser: null,
   role: "administrador",
   view: "dashboard",
   residentId: 1,
@@ -9,22 +11,33 @@ const state = {
   pdfGenerated: false,
   pdfGeneratedResidentId: null,
   pdfGeneratedDays: null,
-  powerBiDays: null
+  powerBiDays: null,
+  closedAlertKeys: []
 };
 
 const $ = (id) => document.getElementById(id);
+const DEMO_PASSWORD = "antu2026";
+const DEMO_USERS = [
+  { email: "administracion@hogarantu.cl", role: "administrador" },
+  { email: "administracion_respaldo@hogarantu.cl", role: "administrador_respaldo" },
+  { email: "cam-dia@hogarantu.cl", role: "cam" },
+  { email: "cam-noche@hogarantu.cl", role: "cam" },
+  { email: "dt@hogarantu.cl", role: "directora" },
+  { email: "enfermero@hogarantu.cl", role: "enfermero" },
+  { email: "nutricion@hogarantu.cl", role: "nutricionista" }
+];
 
 function init() {
   renderRoleSelect();
+  $("loginForm").addEventListener("submit", handleLogin);
   $("roleSelect").addEventListener("change", (event) => {
     state.role = event.target.value;
     state.view = ROLES[state.role].menu[0][0];
     renderShell();
   });
   $("modalCancel").addEventListener("click", closeModal);
-  $("modalConfirm").addEventListener("click", closeModal);
   $("logoutBtn").addEventListener("click", logout);
-  renderShell();
+  renderAuthState();
 }
 
 function renderRoleSelect() {
@@ -32,9 +45,11 @@ function renderRoleSelect() {
     .map(([key, role]) => `<option value="${key}">${role.label}</option>`)
     .join("");
   $("roleSelect").value = state.role;
+  $("roleSelect").disabled = true;
 }
 
 function renderShell() {
+  if (!state.isAuthenticated) return;
   const role = ROLES[state.role];
   document.body.classList.toggle("admin-left-menu", state.role === "administrador" || state.role === "administrador_respaldo");
   $("roleBadge").innerHTML = `<strong>${role.label}</strong><span>${role.user}</span>`;
@@ -50,8 +65,37 @@ function renderShell() {
   renderView();
 }
 
-function logout() {
-  state.role = "administrador";
+function handleLogin(event) {
+  event.preventDefault();
+  const email = $("loginEmail").value.trim().toLowerCase();
+  const password = $("loginPassword").value.trim();
+  const user = DEMO_USERS.find((item) => item.email === email);
+  if (!user || password !== DEMO_PASSWORD) {
+    $("loginError").textContent = "Usuario o contrasena incorrecta. Para la maqueta use clave demo: antu2026.";
+    return;
+  }
+  state.isAuthenticated = true;
+  state.loggedUser = user.email;
+  state.role = user.role;
+  resetSessionState();
+  $("loginError").textContent = "";
+  renderRoleSelect();
+  renderAuthState();
+}
+
+function renderAuthState() {
+  document.body.classList.toggle("authenticated", state.isAuthenticated);
+  document.body.classList.toggle("logged-out", !state.isAuthenticated);
+  if (state.isAuthenticated) {
+    renderShell();
+    return;
+  }
+  document.body.classList.remove("admin-left-menu");
+  $("loginPassword").value = "";
+  setTimeout(() => $("loginEmail").focus(), 0);
+}
+
+function resetSessionState() {
   state.view = ROLES[state.role].menu[0][0];
   state.residentId = 1;
   state.dashboardTab = "evolucion";
@@ -62,9 +106,17 @@ function logout() {
   state.pdfGeneratedResidentId = null;
   state.pdfGeneratedDays = null;
   state.powerBiDays = null;
+  state.closedAlertKeys = [];
+}
+
+function logout() {
+  state.role = "administrador";
+  state.isAuthenticated = false;
+  state.loggedUser = null;
+  resetSessionState();
   renderRoleSelect();
-  renderShell();
-  openModal("Sesión cerrada", "La maqueta volvió a la pantalla inicial. En la versión real este botón cerrará la sesión del usuario y volverá al login.");
+  $("loginError").textContent = "Sesion cerrada.";
+  renderAuthState();
 }
 
 function renderView() {
@@ -117,7 +169,7 @@ function renderAdminDashboard(view) {
   view.innerHTML = page("Dashboard administrador", "Vista general del hogar, residentes activos, alertas y actividad de usuarios.") +
     metrics([
       { value: `${RESIDENTES.length}/18`, label: "Residentes activos" },
-      { value: ALERTAS.length, label: "Alertas abiertas" },
+      { value: alertasAbiertas().length, label: "Alertas abiertas" },
       { value: "8", label: "Usuarios iniciales" },
       { value: "4", label: "Formularios operativos" }
     ]) +
@@ -150,7 +202,7 @@ function renderInicio(view) {
   view.innerHTML = page(`Panel ${role.label}`, "Pantalla inicial respetando los accesos definidos en el prototipo del usuario.") +
     metrics([
       { value: `${RESIDENTES.length}/18`, label: "Residentes activos" },
-      { value: isCam || isNutri ? "16 h" : ALERTAS.length, label: isCam || isNutri ? "Edicion permitida" : "Alertas visibles" },
+      { value: isCam || isNutri ? "16 h" : alertasAbiertas().length, label: isCam || isNutri ? "Edicion permitida" : "Alertas visibles" },
       { value: isNutri ? REGISTROS_NUTRI.length : isCam ? REGISTROS_CAM.length : REGISTROS_PRO.length, label: "Mis registros" },
       { value: "Activo", label: "Estado sesion" }
     ]) +
@@ -188,7 +240,8 @@ function renderResidentes(view) {
 }
 
 function renderBaseDatosResidentes(view) {
-  view.innerHTML = page("Base datos residentes", "Vista administrativa para revisar datos maestros importados desde Excel.") +
+  view.innerHTML = page("Base datos residentes", "Vista administrativa para revisar datos maestros importados desde Excel.",
+    `<button class="btn primary" onclick="startResidentCreate()">Agregar residente</button>`) +
     residentsTable(true);
   attachResidentButtons();
 }
@@ -260,14 +313,14 @@ function residentsTable(admin) {
       <table>
         <thead>
           <tr>
-            <th>Nombre</th><th>RUT</th><th>Sexo</th><th>Edad</th><th>Estado</th><th>Apoderado</th><th>Accion</th>
+            <th>Nombre</th><th>RUT</th><th>Sexo</th><th>Edad</th><th>Estado</th><th>Apoderado</th>${admin ? "<th>Accion</th>" : ""}
           </tr>
         </thead>
         <tbody>
           ${RESIDENTES.map((r) => `<tr>
             <td>${r.nombre}</td><td>${r.rut}</td><td>${r.sexo}</td><td>${r.edad}</td>
             <td><span class="badge green">${r.estado}</span></td><td>${r.apoderado}</td>
-            <td><button class="btn secondary resident-picker" data-id="${r.id}">${admin ? "Editar" : "Ver ficha"}</button></td>
+            ${admin ? `<td><button class="btn secondary resident-edit" data-id="${r.id}">Editar</button></td>` : ""}
           </tr>`).join("")}
         </tbody>
       </table>
@@ -281,6 +334,83 @@ function attachResidentButtons() {
       state.residentId = Number(button.dataset.id);
       renderView();
     });
+  });
+  document.querySelectorAll(".resident-edit").forEach((button) => {
+    button.addEventListener("click", () => startResidentEdit(Number(button.dataset.id)));
+  });
+}
+
+function startResidentCreate() {
+  renderResidentForm(null);
+}
+
+function startResidentEdit(id) {
+  const resident = RESIDENTES.find((r) => r.id === id);
+  renderResidentForm(resident);
+}
+
+function renderResidentForm(resident) {
+  const isEdit = Boolean(resident);
+  $("view").innerHTML = page(isEdit ? "Editar residente" : "Agregar residente", "Complete la ficha del residente. Antes de guardar se solicitara confirmacion.") +
+    `<div class="form-section">
+      <h2>Ficha residente</h2>
+      <div class="grid3">
+        <div><label>Nombre completo</label><input id="resNombre" value="${resident?.nombre || ""}"></div>
+        <div><label>RUT</label><input id="resRut" value="${resident?.rut || ""}"></div>
+        <div><label>Edad</label><input id="resEdad" value="${resident?.edad || ""}"></div>
+        <div><label>Sexo</label><select id="resSexo"><option ${resident?.sexo === "Femenino" ? "selected" : ""}>Femenino</option><option ${resident?.sexo === "Masculino" ? "selected" : ""}>Masculino</option></select></div>
+        <div><label>Fecha ingreso</label><input id="resIngreso" type="date" value="${resident?.ingreso || ""}"></div>
+        <div><label>Peso inicial</label><input id="resPeso" value="${resident?.peso || ""}"></div>
+        <div><label>Apoderado</label><input id="resApoderado" value="${resident?.apoderado || ""}"></div>
+        <div><label>Mail apoderado</label><input id="resMail" type="email" value="${resident?.mail || ""}"></div>
+        <div><label>Telefono apoderado</label><input id="resTelefono" value="${resident?.telefonoApoderado || ""}"></div>
+        <div><label>Contacto SOS</label><input id="resContactoSos" value="${resident?.contactoSos || ""}"></div>
+        <div><label>Telefono SOS</label><input id="resTelefonoSos" value="${resident?.telefonoSos || ""}"></div>
+        <div><label>Servicio urgencia</label><input id="resUrgencia" value="${resident?.urgencia || "SAMU"}"></div>
+      </div>
+      <label>Patologias de ingreso</label>
+      <textarea id="resPatologias">${resident?.patologias || ""}</textarea>
+      <div class="form-actions">
+        <button class="btn primary" onclick="saveResidentDraft(${resident?.id || "null"})">${isEdit ? "Guardar cambios" : "Crear residente"}</button>
+        <button class="btn ghost" onclick="go('bdresidentes')">Cancelar</button>
+      </div>
+    </div>`;
+}
+
+function saveResidentDraft(id) {
+  const nombre = $("resNombre").value.trim();
+  if (!nombre) {
+    openModal("Ficha residente", "Debe ingresar el nombre completo del residente.");
+    return;
+  }
+  const payload = {
+    nombre,
+    rut: $("resRut").value.trim(),
+    edad: $("resEdad").value.trim(),
+    sexo: $("resSexo").value,
+    ingreso: $("resIngreso").value,
+    peso: $("resPeso").value.trim(),
+    patologias: $("resPatologias").value.trim(),
+    apoderado: $("resApoderado").value.trim(),
+    mail: $("resMail").value.trim(),
+    telefonoApoderado: $("resTelefono").value.trim(),
+    telefonoSos: $("resTelefonoSos").value.trim(),
+    contactoSos: $("resContactoSos").value.trim(),
+    urgencia: $("resUrgencia").value.trim(),
+    estado: "Activo"
+  };
+  openModal("Confirmar ficha residente", id ? "Desea guardar los cambios de este residente?" : "Desea crear este nuevo residente?", () => {
+    if (id) {
+      const resident = RESIDENTES.find((r) => r.id === id);
+      Object.assign(resident, payload);
+      state.residentId = id;
+    } else {
+      const nextId = Math.max(...RESIDENTES.map((r) => r.id)) + 1;
+      RESIDENTES.push({ id: nextId, ...payload });
+      state.residentId = nextId;
+    }
+    state.view = "bdresidentes";
+    renderShell();
   });
 }
 
@@ -595,10 +725,10 @@ function chartCard(config, data, key) {
 function reportCharts(controles, days) {
   return `<h3>Graficas control de ciclos - ultimos ${days} dias</h3>
     <div class="chart-grid">
-      ${chartCardReport(UMBRALES_CICLOS.temp, controles, "temp")}
       ${chartCardReport(UMBRALES_CICLOS.spo2, controles, "spo2")}
       ${chartCardReport(UMBRALES_CICLOS.pad, controles, "pad")}
       ${chartCardReport(UMBRALES_CICLOS.hgt, controles, "hgt")}
+      ${chartCardReport(UMBRALES_CICLOS.temp, controles, "temp")}
     </div>`;
 }
 
@@ -828,7 +958,7 @@ function parseRegistroDate(value) {
 }
 
 function residentAlerts(resident) {
-  const items = ALERTAS.filter((a) => a.residente === resident.nombre);
+  const items = alertasAbiertas().filter((a) => a.residente === resident.nombre);
   return items.length ? items.map(alertaItem).join("") : `<div class="notice">Sin alertas abiertas para este residente.</div>`;
 }
 
@@ -897,17 +1027,82 @@ function renderMisRegistrosNutri(view) {
 function renderFormulariosAdmin(view) {
   view.innerHTML = page("Formularios", "Acceso administrativo a formularios por rol.") +
     `<div class="tabs">
-      <button class="active">CAM / Cuidadoras</button>
-      <button>Directora Tecnica</button>
-      <button>Enfermero</button>
-      <button>Nutricionista</button>
+      <button onclick="go('formularioCam')">CAM / Cuidadoras</button>
+      <button onclick="go('formularioDt')">Directora Tecnica</button>
+      <button onclick="go('formularioEnfermero')">Enfermero</button>
+      <button onclick="go('formularioNutri')">Nutricionista</button>
     </div>
-    <div class="card"><h2>Vista previa</h2><p>Desde aqui el administrador podra revisar estructura, registros y permisos por formulario.</p></div>`;
+    <div class="card"><h2>Seleccione un formulario</h2><p>Desde aqui el administrador puede abrir cada formulario, revisar su estructura y simular el ingreso de registros.</p></div>`;
 }
 
 function renderRegistrosUsuarios(view) {
   view.innerHTML = page("Registros usuarios", "Revision administrativa de registros ingresados por perfiles.") +
-    registrosTable([...REGISTROS_CAM, ...REGISTROS_PRO, ...REGISTROS_NUTRI], ["Fecha", "Residente", "Tipo", "Detalle"]);
+    registrosUsuariosTable();
+}
+
+function registrosUsuariosTable() {
+  const rows = [
+    ...REGISTROS_CAM.map((row, index) => ({ source: "cam", index, row, origen: "CAM" })),
+    ...REGISTROS_PRO.map((row, index) => ({ source: "pro", index, row, origen: row.rol || "Profesional" })),
+    ...REGISTROS_NUTRI.map((row, index) => ({ source: "nutri", index, row, origen: "Nutricionista" }))
+  ].sort((a, b) => parseRegistroDate(b.row.fecha) - parseRegistroDate(a.row.fecha));
+  return `<div class="card table-wrap"><table>
+    <thead><tr><th>Fecha</th><th>Residente</th><th>Origen</th><th>Usuario</th><th>Cuidadora</th><th>Detalle</th><th>Estado</th><th>Accion</th></tr></thead>
+    <tbody>${rows.map(({ source, index, row, origen }) => `<tr>
+      <td>${row.fecha || ""}</td>
+      <td>${row.residente || ""}</td>
+      <td>${origen}</td>
+      <td>${row.usuario || row.rol || "nutricion@hogarantu.cl"}</td>
+      <td>${row.cuidadora || "-"}</td>
+      <td>${row.detalle || row.registro || row.observacion || ""}</td>
+      <td>${row.editable ? '<span class="badge green">Editable</span>' : '<span class="badge red">Bloqueado</span>'}</td>
+      <td><button class="btn secondary" onclick="startRecordEdit('${source}', ${index})">Editar</button></td>
+    </tr>`).join("")}</tbody>
+  </table></div>`;
+}
+
+function startRecordEdit(source, index) {
+  const row = recordArray(source)[index];
+  const detalle = row.detalle || row.registro || row.observacion || "";
+  $("view").innerHTML = page("Editar registro de usuario", "Edicion administrativa para registros fuera del periodo normal de edicion.") +
+    `<div class="form-section">
+      <div class="grid3">
+        <div><label>Fecha</label><input id="editRegistroFecha" value="${row.fecha || ""}"></div>
+        <div><label>Residente</label><input id="editRegistroResidente" value="${row.residente || ""}" readonly></div>
+        <div><label>Usuario / rol</label><input id="editRegistroUsuario" value="${row.usuario || row.rol || "nutricion@hogarantu.cl"}"></div>
+        ${source === "cam" ? `<div><label>Cuidadora</label><input id="editRegistroCuidadora" value="${row.cuidadora || ""}"></div>` : ""}
+      </div>
+      <label>Detalle del registro</label>
+      <textarea id="editRegistroDetalle">${detalle}</textarea>
+      <div class="form-actions">
+        <button class="btn primary" onclick="saveRecordEdit('${source}', ${index})">Guardar cambios</button>
+        <button class="btn ghost" onclick="go('registros')">Cancelar</button>
+      </div>
+    </div>`;
+}
+
+function saveRecordEdit(source, index) {
+  openModal("Confirmar edicion", "Desea guardar los cambios de este registro?", () => {
+    const row = recordArray(source)[index];
+    row.fecha = $("editRegistroFecha").value;
+    if (source === "cam") {
+      row.usuario = $("editRegistroUsuario").value;
+      row.cuidadora = $("editRegistroCuidadora").value;
+      row.detalle = $("editRegistroDetalle").value;
+    } else if (source === "pro") {
+      row.rol = $("editRegistroUsuario").value;
+      row.registro = $("editRegistroDetalle").value;
+    } else {
+      row.observacion = $("editRegistroDetalle").value;
+    }
+    row.editable = true;
+    state.view = "registros";
+    renderShell();
+  });
+}
+
+function recordArray(source) {
+  return { cam: REGISTROS_CAM, pro: REGISTROS_PRO, nutri: REGISTROS_NUTRI }[source];
 }
 
 function renderAlertas(view) {
@@ -915,16 +1110,46 @@ function renderAlertas(view) {
     `<div class="card">${alertasList(true)}</div>`;
 }
 
+function alertasAbiertas() {
+  return ALERTAS.filter((a) => !a.cerrada && !state.closedAlertKeys.includes(alertKey(a)));
+}
+
 function alertasList(withActions = false) {
-  return ALERTAS.map((a) => alertaItem(a, withActions)).join("");
+  const abiertas = alertasAbiertas();
+  return abiertas.length ? abiertas.map((a) => alertaItem(a, withActions)).join("") : `<div class="notice">No hay alertas abiertas sin tratamiento.</div>`;
 }
 
 function alertaItem(a, withActions = false) {
+  const key = alertKey(a);
   return `<div class="timeline">
     <b>${a.fecha} | ${a.variable} <span class="badge ${a.color}">${a.nivel}</span></b>
     <p><b>Residente:</b> ${a.residente}<br><b>Valor:</b> ${a.valor}<br><b>Accion sugerida:</b> ${a.accion}</p>
-    ${withActions ? '<button class="btn danger" onclick="openModal(\'Cerrar alerta\', \'Registrar comentario de cierre de alerta?\')">Cerrar alerta</button>' : ""}
+    ${withActions ? `<button class="btn danger" onclick="closeAlertWithComment('${escapeJs(key)}')">Cerrar alerta</button>` : ""}
   </div>`;
+}
+
+function alertKey(alerta) {
+  return [alerta.fecha, alerta.residente, alerta.variable, alerta.valor].join("||");
+}
+
+function closeAlertWithComment(key) {
+  const alerta = ALERTAS.find((item) => alertKey(item) === key);
+  const label = alerta ? `${alerta.residente} (${alerta.variable}, ${alerta.fecha})` : "la alerta seleccionada";
+  openPromptModal("Cerrar alerta", `Registrar comentario de cierre para ${label}.`, "Comentario de cierre, accion tomada o derivacion realizada", (comment) => {
+    if (!comment.trim()) {
+      openModal("Cerrar alerta", "Debe ingresar un comentario antes de cerrar la alerta.");
+      return;
+    }
+    if (alerta) {
+      alerta.cerrada = true;
+      alerta.comentarioCierre = comment.trim();
+      alerta.fechaCierre = "2026-06-15 10:30";
+      alerta.cerradaPor = state.loggedUser || ROLES[state.role].user;
+    }
+    if (!state.closedAlertKeys.includes(key)) state.closedAlertKeys.push(key);
+    renderView();
+    openModal("Alerta cerrada", "La alerta quedo registrada como tratada y salio del panel de alertas abiertas.");
+  });
 }
 
 function renderRangos(view) {
@@ -953,12 +1178,78 @@ function rangoCard(nombre, min, max, unidad) {
 
 function renderUsuarios(view) {
   view.innerHTML = page("Usuarios y roles", "Usuarios iniciales detectados desde Excel y permisos propuestos.") +
-    `<div class="card table-wrap"><table>
-      <thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Accion</th></tr></thead>
+    `<div class="toolbar">
+      <button class="btn primary" onclick="showUserForm()">Agregar usuario</button>
+    </div>
+    <div id="userFormHost"></div>
+    <div class="card table-wrap"><table>
+      <thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Acciones</th></tr></thead>
       <tbody>
-        ${Object.values(ROLES).map((r) => `<tr><td>${r.label}</td><td>${r.user}</td><td>${r.label}</td><td><button class="btn secondary">Editar</button></td></tr>`).join("")}
+        ${DEMO_USERS.map((user, index) => {
+          const role = ROLES[user.role];
+          return `<tr>
+            <td>${role?.label || "Usuario"}</td>
+            <td>${user.email}</td>
+            <td>${role?.label || user.role}</td>
+            <td>
+              <div class="toolbar compact-actions">
+                <button class="btn secondary" onclick="showUserForm(${index})">Editar</button>
+                <button class="btn ghost" onclick="resetUserPassword(${index})">Resetear clave</button>
+                <button class="btn danger" onclick="deleteUser(${index})">Eliminar</button>
+              </div>
+            </td>
+          </tr>`;
+        }).join("")}
       </tbody>
     </table></div>`;
+}
+
+function showUserForm(index = null) {
+  const user = Number.isInteger(index) ? DEMO_USERS[index] : null;
+  $("userFormHost").innerHTML = `<div class="form-section">
+    <h2>${user ? "Editar usuario" : "Agregar usuario"}</h2>
+    <div class="grid3">
+      <div><label>Email</label><input id="userEmail" type="email" value="${user?.email || ""}"></div>
+      <div><label>Rol</label><select id="userRole">
+        ${Object.entries(ROLES).map(([key, role]) => `<option value="${key}" ${user?.role === key ? "selected" : ""}>${role.label}</option>`).join("")}
+      </select></div>
+      <div><label>Clave temporal</label><input id="userPassword" value="${DEMO_PASSWORD}" readonly></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn primary" onclick="saveUser(${Number.isInteger(index) ? index : "null"})">${user ? "Guardar usuario" : "Crear usuario"}</button>
+      <button class="btn ghost" onclick="$('userFormHost').innerHTML = ''">Cancelar</button>
+    </div>
+  </div>`;
+}
+
+function saveUser(index) {
+  const email = $("userEmail").value.trim().toLowerCase();
+  const role = $("userRole").value;
+  if (!isValidEmail(email)) {
+    openModal("Usuario", "Debe ingresar un correo valido.");
+    return;
+  }
+  openModal("Confirmar usuario", index === null ? "Desea crear este usuario?" : "Desea guardar los cambios de este usuario?", () => {
+    if (index === null) {
+      DEMO_USERS.push({ email, role });
+    } else {
+      DEMO_USERS[index] = { email, role };
+    }
+    renderView();
+  });
+}
+
+function resetUserPassword(index) {
+  const user = DEMO_USERS[index];
+  openModal("Resetear clave", `Se enviaria una clave temporal al usuario ${user.email}. Para la maqueta la clave vuelve a ser ${DEMO_PASSWORD}.`);
+}
+
+function deleteUser(index) {
+  const user = DEMO_USERS[index];
+  openModal("Eliminar usuario", `Desea eliminar el usuario ${user.email}?`, () => {
+    DEMO_USERS.splice(index, 1);
+    renderView();
+  });
 }
 
 function renderPdf(view) {
@@ -1045,6 +1336,51 @@ function isValidEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
 }
 
+function reportPersonalData(resident) {
+  return `<h3>Datos personales</h3>
+    <div class="grid3 report-personal-data">
+      ${field("Nombre", resident.nombre)}
+      ${field("RUT", resident.rut)}
+      ${field("Edad", resident.edad)}
+      ${field("Sexo", resident.sexo)}
+      ${field("Fecha ingreso", resident.ingreso)}
+      ${field("Peso inicial", resident.peso)}
+      ${field("Patologias ingreso", resident.patologias)}
+      ${field("Apoderado", resident.apoderado)}
+      ${field("Mail apoderado", resident.mail)}
+      ${field("Telefono apoderado", resident.telefonoApoderado)}
+      ${field("Contacto SOS", resident.contactoSos)}
+      ${field("Servicio urgencia", resident.urgencia)}
+    </div>`;
+}
+
+function reportBitacoraLastFive(resident, limit = null) {
+  const data = reportData(resident, 5);
+  const entries = Number(limit) ? data.entries.slice(0, limit) : data.entries;
+  return `<h3>Bitacora ultimos 5 dias</h3>
+    ${entries.map((entry) => `<div class="timeline ${entry.clase}">
+      <b>${entry.fecha} | ${entry.tipo}</b>
+      <p>${entry.detalle}</p>
+    </div>`).join("") || `<div class="notice">Sin registros en los ultimos 5 dias.</div>`}`;
+}
+
+function reportMedicationTable(rows, limit = null) {
+  const medicamentos = Number(limit) ? rows.slice(0, limit) : rows;
+  return `<h3>Control de medicamentos</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Fecha</th><th>Remedio</th><th>Usuario</th><th>Cuidadora</th><th>Detalle</th></tr></thead>
+        <tbody>${medicamentos.map((row) => `<tr>
+          <td>${medicamentoFecha(row)}</td>
+          <td>${row.medicamento || inferMedicamento(row.detalle)}</td>
+          <td>${row.usuario || usuarioCamPorTurno(row.turno)}</td>
+          <td>${row.cuidadora}</td>
+          <td>${row.detalle}</td>
+        </tr>`).join("") || `<tr><td colspan="5">Sin medicamentos registrados en el periodo.</td></tr>`}</tbody>
+      </table>
+    </div>`;
+}
+
 function pdfPreview(resident, days) {
   const data = reportData(resident, days);
   return `<div class="card report-preview">
@@ -1060,26 +1396,12 @@ function pdfPreview(resident, days) {
       { value: data.nutri.length, label: "Registros Nutricion" },
       { value: data.medicamentos.length, label: "Medicamentos" }
     ])}
+    ${reportPersonalData(resident)}
+    ${reportBitacoraLastFive(resident, 10)}
     ${reportCharts(data.controles, days)}
     <h3>Peso mensual</h3>
     ${pesoMensualCard(resident)}
-    <h3>Bitacora resumida</h3>
-    ${data.entries.slice(0, 10).map((entry) => `<div class="timeline ${entry.clase}">
-      <b>${entry.fecha} | ${entry.tipo}</b>
-      <p>${entry.detalle}</p>
-    </div>`).join("") || `<div class="notice">Sin registros para el periodo seleccionado.</div>`}
-    <h3>Medicamentos</h3>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Fecha</th><th>Remedio</th><th>Usuario</th><th>Cuidadora</th></tr></thead>
-        <tbody>${data.medicamentos.slice(0, 8).map((row) => `<tr>
-          <td>${medicamentoFecha(row)}</td>
-          <td>${row.medicamento || inferMedicamento(row.detalle)}</td>
-          <td>${row.usuario || usuarioCamPorTurno(row.turno)}</td>
-          <td>${row.cuidadora}</td>
-        </tr>`).join("") || `<tr><td colspan="4">Sin medicamentos registrados en el periodo.</td></tr>`}</tbody>
-      </table>
-    </div>
+    ${reportMedicationTable(data.medicamentos, 8)}
   </div>`;
 }
 
@@ -1145,21 +1467,13 @@ function generatedPdfSection() {
     <div class="print-report">
       <h1>Reporte residente</h1>
       <p class="report-meta">${resident.nombre} | Ultimos ${days} dias | Emision 2026-06-17</p>
-      <h2>Resumen</h2>
-      <p>Registros CAM: ${data.cam.length}. Registros profesionales: ${data.pro.length}. Registros nutricion: ${data.nutri.length}. Medicamentos: ${data.medicamentos.length}.</p>
+      ${reportPersonalData(resident)}
+      ${reportBitacoraLastFive(resident)}
       <h2>Graficas de control de ciclos</h2>
       ${reportCharts(data.controles, days)}
       <h2>Peso mensual</h2>
       ${pesoMensualCard(resident)}
-      <h2>Bitacora</h2>
-      ${data.entries.map((entry) => `<div class="timeline ${entry.clase}"><b>${entry.fecha} | ${entry.tipo}</b><p>${entry.detalle}</p></div>`).join("") || "<p>Sin registros.</p>"}
-      <h2>Medicamentos</h2>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Fecha</th><th>Remedio</th><th>Usuario</th><th>Cuidadora</th><th>Detalle</th></tr></thead>
-          <tbody>${data.medicamentos.map((row) => `<tr><td>${medicamentoFecha(row)}</td><td>${row.medicamento || inferMedicamento(row.detalle)}</td><td>${row.usuario || usuarioCamPorTurno(row.turno)}</td><td>${row.cuidadora}</td><td>${row.detalle}</td></tr>`).join("") || `<tr><td colspan="5">Sin medicamentos en el periodo.</td></tr>`}</tbody>
-        </table>
-      </div>
+      ${reportMedicationTable(data.medicamentos)}
     </div>
   </div>`;
 }
@@ -1168,17 +1482,76 @@ function printGeneratedPdf() {
   window.print();
 }
 
-function sendPdfByEmail(resident, days, email) {
+async function sendPdfByEmail(resident, days, email) {
   if (!isValidEmail(email)) {
     openModal("Enviar reporte", "Debe ingresar un correo valido antes de enviar el reporte.");
     return;
   }
   const data = reportData(resident, days);
-  openModal(
-    "Enviar reporte por mail",
-    `Maqueta de envio: se enviaria el reporte de ${resident.nombre}, ultimos ${days} dias, a ${email}. Incluye ${data.entries.length} registros de bitacora y ${data.medicamentos.length} medicamentos.`,
-    () => {}
-  );
+  openModal("Enviar reporte por mail", `Enviando reporte de ${resident.nombre} a ${email}...`);
+  try {
+    const response = await fetch("/api/reportes/email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to: email,
+        residentName: resident.nombre,
+        days,
+        html: reportEmailHtml(resident, days, data)
+      })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(result.message || "No fue posible enviar el correo.");
+    }
+    openModal("Reporte enviado", `Correo enviado a ${email}. ID de prueba: ${result.messageId || "sin ID"}.`);
+  } catch (error) {
+    openModal("Enviar reporte", `No se pudo enviar el correo real. Revise la configuracion SMTP del backend. Detalle: ${error.message}`);
+  }
+}
+
+function reportEmailHtml(resident, days, data) {
+  return `<!doctype html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>
+        body { font-family: Arial, sans-serif; color: #273236; }
+        h1 { color: #0f6f72; }
+        h2 { margin-top: 24px; color: #0f6f72; }
+        table { border-collapse: collapse; width: 100%; margin: 12px 0 20px; }
+        th, td { border: 1px solid #c8d4d6; padding: 7px; text-align: left; vertical-align: top; }
+        th { background: #e7eeee; }
+        .item { border-left: 4px solid #188f8f; padding: 8px 12px; margin: 8px 0; background: #f7fbfb; }
+      </style>
+    </head>
+    <body>
+      <h1>Reporte residente - Hogar Antu</h1>
+      <p><b>Residente:</b> ${escapeHtml(resident.nombre)}<br><b>Periodo solicitado:</b> ultimos ${days} dias<br><b>Emision:</b> 2026-06-17</p>
+      <h2>Datos personales</h2>
+      <table>
+        <tr><th>RUT</th><td>${escapeHtml(resident.rut)}</td><th>Edad</th><td>${escapeHtml(resident.edad)}</td></tr>
+        <tr><th>Sexo</th><td>${escapeHtml(resident.sexo)}</td><th>Ingreso</th><td>${escapeHtml(resident.ingreso)}</td></tr>
+        <tr><th>Apoderado</th><td>${escapeHtml(resident.apoderado)}</td><th>Mail</th><td>${escapeHtml(resident.mail)}</td></tr>
+        <tr><th>Patologias</th><td colspan="3">${escapeHtml(resident.patologias)}</td></tr>
+      </table>
+      <h2>Bitacora ultimos 5 dias</h2>
+      ${reportData(resident, 5).entries.slice(0, 12).map((entry) => `<div class="item"><b>${escapeHtml(entry.fecha)} | ${escapeHtml(entry.tipo)}</b><br>${entry.detalle}</div>`).join("") || "<p>Sin registros recientes.</p>"}
+      <h2>Resumen del periodo</h2>
+      <table>
+        <tr><th>Registros CAM</th><td>${data.cam.length}</td></tr>
+        <tr><th>Registros DT/Enfermero</th><td>${data.pro.length}</td></tr>
+        <tr><th>Registros nutricion</th><td>${data.nutri.length}</td></tr>
+        <tr><th>Medicamentos</th><td>${data.medicamentos.length}</td></tr>
+      </table>
+      <h2>Control de medicamentos</h2>
+      <table>
+        <thead><tr><th>Fecha</th><th>Remedio</th><th>Usuario</th><th>Cuidadora</th></tr></thead>
+        <tbody>${data.medicamentos.slice(0, 20).map((row) => `<tr><td>${escapeHtml(medicamentoFecha(row))}</td><td>${escapeHtml(row.medicamento || inferMedicamento(row.detalle))}</td><td>${escapeHtml(row.usuario || usuarioCamPorTurno(row.turno))}</td><td>${escapeHtml(row.cuidadora)}</td></tr>`).join("") || `<tr><td colspan="4">Sin medicamentos registrados.</td></tr>`}</tbody>
+      </table>
+      <p>Prueba rapida: el producto final enviara este contenido como PDF adjunto.</p>
+    </body>
+    </html>`;
 }
 
 function renderPowerBi(view) {
@@ -1340,6 +1713,10 @@ function go(view) {
   renderShell();
 }
 
+function escapeJs(value) {
+  return String(value ?? "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
 function openModal(title, text, onConfirm) {
   $("modalTitle").textContent = title;
   $("modalText").textContent = text;
@@ -1351,9 +1728,22 @@ function openModal(title, text, onConfirm) {
   };
 }
 
+function openPromptModal(title, text, placeholder, onConfirm) {
+  $("modalTitle").textContent = title;
+  $("modalText").innerHTML = `${escapeHtml(text)}<textarea id="modalPromptInput" class="modal-textarea" placeholder="${escapeHtml(placeholder)}"></textarea>`;
+  $("modal").classList.add("open");
+  $("modal").setAttribute("aria-hidden", "false");
+  $("modalConfirm").onclick = () => {
+    const value = $("modalPromptInput")?.value || "";
+    closeModal();
+    if (onConfirm) onConfirm(value);
+  };
+}
+
 function closeModal() {
   $("modal").classList.remove("open");
   $("modal").setAttribute("aria-hidden", "true");
+  $("modalText").textContent = "";
 }
 
 init();

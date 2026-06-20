@@ -305,6 +305,7 @@ const ROLES = {
       ["inicio", "Inicio"],
       ["formularioDt", "Formulario DT"],
       ["dashboardResidente", "Dashboard residentes"],
+      ["alertas", "Alertas / Alarmas"],
       ["misRegistrosProfesional", "Mis registros"]
     ]
   },
@@ -315,6 +316,7 @@ const ROLES = {
       ["inicio", "Inicio"],
       ["formularioEnfermero", "Formulario Enfermero"],
       ["dashboardResidente", "Dashboard residentes"],
+      ["alertas", "Alertas / Alarmas"],
       ["misRegistrosProfesional", "Mis registros"]
     ]
   },
