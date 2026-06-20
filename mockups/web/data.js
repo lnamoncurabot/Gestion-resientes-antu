@@ -355,6 +355,7 @@ const ALERTAS = [
 
 const CONTROL_DIAS = Array.from({ length: 30 }, (_, index) => index);
 const CONTROL_HORAS = ["08:00", "14:00", "20:00"];
+const CONTROL_MINIMO_DIARIO = 2;
 const CONTROL_ULTIMA_SEMANA_DIAS = 5;
 const CONTROL_LECTURAS_POR_DIA = CONTROL_HORAS.length;
 const CONTROL_PUNTOS_GRAFICA = CONTROL_ULTIMA_SEMANA_DIAS * CONTROL_LECTURAS_POR_DIA;
@@ -370,7 +371,7 @@ const CONTROLES_CICLOS = RESIDENTES.flatMap((residente, residentIndex) => {
     const fecha = new Date(2026, 4, 16 + dayOffset);
     const day = String(fecha.getDate()).padStart(2, "0");
     const month = String(fecha.getMonth() + 1).padStart(2, "0");
-    return CONTROL_HORAS.map((hora, hourIndex) => {
+    return CONTROL_HORAS.filter((_, hourIndex) => debeCrearControlCiclo(residentIndex, dayOffset, hourIndex)).map((hora, hourIndex) => {
       const seed = residentIndex * 17 + dayOffset * 5 + hourIndex * 3;
       const temp = 36.2 + ((seed % 12) * 0.12);
       const spo2 = 97 - (seed % 5);
@@ -435,7 +436,7 @@ function cicloDetalle(residentIndex, dayOffset, hourIndex) {
 
 let REGISTROS_CAM = RESIDENTES.flatMap((residente, residentIndex) =>
   CONTROL_DIAS.flatMap((dayOffset) =>
-    CONTROL_HORAS.map((hora, hourIndex) => {
+    CONTROL_HORAS.filter((_, hourIndex) => debeCrearControlCiclo(residentIndex, dayOffset, hourIndex)).map((hora, hourIndex) => {
       const esMedicamento = hourIndex !== 1 && (residentIndex + dayOffset + hourIndex) % 2 === 0;
       const esObservacion = (residentIndex + dayOffset + hourIndex) % 5 === 0;
       const medicamento = esMedicamento ? MEDICAMENTOS_SIMULADOS[(residentIndex + dayOffset + hourIndex) % MEDICAMENTOS_SIMULADOS.length] : "";
@@ -462,6 +463,15 @@ let REGISTROS_CAM = RESIDENTES.flatMap((residente, residentIndex) =>
     })
   )
 );
+
+function debeCrearControlCiclo(residentIndex, dayOffset, hourIndex) {
+  const diasConTomaInsuficiente = [
+    { residentIndex: 4, dayOffset: 28 },
+    { residentIndex: 8, dayOffset: 28 }
+  ];
+  const casoDemo = diasConTomaInsuficiente.some((item) => item.residentIndex === residentIndex && item.dayOffset === dayOffset);
+  return !casoDemo || hourIndex === 0;
+}
 
 let REGISTROS_PRO = RESIDENTES.flatMap((residente, residentIndex) =>
   [3, 10, 17, 24, 29].flatMap((dayOffset, weekIndex) => [

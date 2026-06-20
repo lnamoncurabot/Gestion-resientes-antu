@@ -12,7 +12,10 @@ const state = {
   pdfGeneratedResidentId: null,
   pdfGeneratedDays: null,
   powerBiDays: null,
-  closedAlertKeys: []
+  closedAlertKeys: [],
+  closedAlerts: [],
+  alertExportFrom: "2026-06-01",
+  alertExportTo: "2026-06-15"
 };
 
 const $ = (id) => document.getElementById(id);
@@ -107,6 +110,9 @@ function resetSessionState() {
   state.pdfGeneratedDays = null;
   state.powerBiDays = null;
   state.closedAlertKeys = [];
+  state.closedAlerts = [];
+  state.alertExportFrom = "2026-06-01";
+  state.alertExportTo = "2026-06-15";
 }
 
 function logout() {
@@ -659,7 +665,7 @@ function dashboardTabContent(r) {
 
 function renderGraficasCam(resident) {
   const data = ultimosControlesSemana(resident);
-  return `<div class="notice">Graficas de controles CAM: ultimos 5 dias, con 3 lecturas por dia. Eje X: fecha de cada lectura. Eje Y: valor registrado.</div>
+  return `<div class="notice">Graficas de controles CAM: ultimos 5 dias, con hasta 3 lecturas posibles por dia. Regla operativa: minimo 2 controles diarios por residente.</div>
     <div class="chart-grid">
       ${chartCard(UMBRALES_CICLOS.temp, data, "temp")}
       ${chartCard(UMBRALES_CICLOS.spo2, data, "spo2")}
@@ -1106,12 +1112,23 @@ function recordArray(source) {
 }
 
 function renderAlertas(view) {
+  const adminTools = adminAlertExportPanel();
   view.innerHTML = page("Alertas / Alarmas", "Panel de alertas abiertas y cierre con comentario.") +
-    `<div class="card">${alertasList(true)}</div>`;
+    `<div class="card">
+      <h2>Alertas abiertas sin tratamiento</h2>
+      ${alertasList(true)}
+    </div>
+    ${adminTools}
+    ${closedAlertsPanel()}`;
+  bindAlertExportControls();
+}
+
+function todasLasAlertas() {
+  return [...ALERTAS, ...alertasCiclosInsuficientes()];
 }
 
 function alertasAbiertas() {
-  return ALERTAS.filter((a) => !a.cerrada && !state.closedAlertKeys.includes(alertKey(a)));
+  return todasLasAlertas().filter((a) => !a.cerrada && !state.closedAlertKeys.includes(alertKey(a)));
 }
 
 function alertasList(withActions = false) {
@@ -1133,7 +1150,7 @@ function alertKey(alerta) {
 }
 
 function closeAlertWithComment(key) {
-  const alerta = ALERTAS.find((item) => alertKey(item) === key);
+  const alerta = todasLasAlertas().find((item) => alertKey(item) === key);
   const label = alerta ? `${alerta.residente} (${alerta.variable}, ${alerta.fecha})` : "la alerta seleccionada";
   openPromptModal("Cerrar alerta", `Registrar comentario de cierre para ${label}.`, "Comentario de cierre, accion tomada o derivacion realizada", (comment) => {
     if (!comment.trim()) {
@@ -1147,9 +1164,190 @@ function closeAlertWithComment(key) {
       alerta.cerradaPor = state.loggedUser || ROLES[state.role].user;
     }
     if (!state.closedAlertKeys.includes(key)) state.closedAlertKeys.push(key);
+    if (alerta && !state.closedAlerts.some((item) => item.key === key)) {
+      state.closedAlerts.unshift({
+        key,
+        fecha: alerta.fecha,
+        residente: alerta.residente,
+        variable: alerta.variable,
+        valor: alerta.valor,
+        nivel: alerta.nivel,
+        comentario: comment.trim(),
+        fechaCierre: "2026-06-15 10:30",
+        cerradaPor: state.loggedUser || ROLES[state.role].user
+      });
+    }
     renderView();
     openModal("Alerta cerrada", "La alerta quedo registrada como tratada y salio del panel de alertas abiertas.");
   });
+}
+
+function closedAlertsPanel() {
+  const canSeeClosed = ["administrador", "administrador_respaldo", "directora", "enfermero"].includes(state.role);
+  if (!canSeeClosed) return "";
+  const rows = closedAlertsForRole();
+  const title = state.role === "administrador" || state.role === "administrador_respaldo"
+    ? "Alertas cerradas - historial completo"
+    : "Alertas cerradas - ultimos 5 dias";
+  return `<div class="card table-wrap">
+    <h2>${title}</h2>
+    <table>
+      <thead><tr><th>Fecha alerta</th><th>Residente</th><th>Alerta</th><th>Valor</th><th>Cerrada por</th><th>Fecha cierre</th><th>Comentario</th></tr></thead>
+      <tbody>
+        ${rows.length ? rows.map((alerta) => `<tr>
+          <td>${alerta.fecha}</td>
+          <td>${alerta.residente}</td>
+          <td>${alerta.variable}</td>
+          <td>${alerta.valor}</td>
+          <td>${alerta.cerradaPor}</td>
+          <td>${alerta.fechaCierre}</td>
+          <td>${alerta.comentario}</td>
+        </tr>`).join("") : `<tr><td colspan="7">Aun no hay alertas cerradas en esta sesion.</td></tr>`}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+function closedAlertsForRole() {
+  if (state.role === "administrador" || state.role === "administrador_respaldo") {
+    return state.closedAlerts;
+  }
+  const today = new Date(2026, 5, 15, 23, 59);
+  const limit = daysBefore(today, 5);
+  return state.closedAlerts.filter((alerta) => parseRegistroDate(alerta.fechaCierre) >= limit);
+}
+
+function adminAlertExportPanel() {
+  const isAdmin = state.role === "administrador" || state.role === "administrador_respaldo";
+  if (!isAdmin) return "";
+  return `<div class="card">
+    <h2>Exportar registro completo de alarmas</h2>
+    <div class="grid3">
+      <div><label>Desde</label><input id="alertExportFrom" type="date" max="2026-06-15" value="${state.alertExportFrom}"></div>
+      <div><label>Hasta</label><input id="alertExportTo" type="date" max="2026-06-15" value="${state.alertExportTo}"></div>
+      <div class="form-actions">
+        <button class="btn primary" id="exportAlertsExcel">Descargar Excel</button>
+      </div>
+    </div>
+    <div class="notice">Exporta alertas abiertas y cerradas dentro del periodo seleccionado. El calendario queda limitado a fechas pasadas o actuales.</div>
+  </div>`;
+}
+
+function bindAlertExportControls() {
+  const from = $("alertExportFrom");
+  const to = $("alertExportTo");
+  const button = $("exportAlertsExcel");
+  if (!from || !to || !button) return;
+  from.addEventListener("input", () => {
+    state.alertExportFrom = from.value;
+  });
+  to.addEventListener("input", () => {
+    state.alertExportTo = to.value;
+  });
+  button.addEventListener("click", () => exportAlertsExcel());
+}
+
+function exportAlertsExcel() {
+  const today = new Date(2026, 5, 15, 23, 59);
+  const from = parseDateInput(state.alertExportFrom);
+  const to = parseDateInput(state.alertExportTo, true);
+  if (!from || !to || from > to) {
+    openModal("Exportar alarmas", "Debe seleccionar un rango de fechas valido.");
+    return;
+  }
+  if (from > today || to > today) {
+    openModal("Exportar alarmas", "El rango no puede contener fechas futuras.");
+    return;
+  }
+  const rows = alertasExportables().filter((alerta) => {
+    const fecha = parseRegistroDate(alerta.fecha);
+    return fecha >= from && fecha <= to;
+  });
+  const html = `<!doctype html>
+    <html><head><meta charset="utf-8">
+    <style>body{font-family:Arial,sans-serif}table{border-collapse:collapse;width:100%}th,td{border:1px solid #b8c6c8;padding:6px;vertical-align:top}th{background:#e7eeee}</style>
+    </head><body>
+      <h1>Registro completo de alarmas</h1>
+      <p>Periodo: ${state.alertExportFrom} a ${state.alertExportTo}</p>
+      ${excelTable("Alarmas abiertas y cerradas", rows, [
+        ["Estado", "estado"], ["Fecha alerta", "fecha"], ["Residente", "residente"], ["Alerta", "variable"], ["Valor", "valor"], ["Nivel", "nivel"], ["Accion sugerida", "accion"], ["Cerrada por", "cerradaPor"], ["Fecha cierre", "fechaCierre"], ["Comentario cierre", "comentario"]
+      ])}
+    </body></html>`;
+  downloadHtmlExcel(html, `alertas_${state.alertExportFrom}_${state.alertExportTo}.xls`);
+}
+
+function alertasExportables() {
+  const abiertas = alertasAbiertas().map((alerta) => ({
+    estado: "Abierta",
+    fecha: alerta.fecha,
+    residente: alerta.residente,
+    variable: alerta.variable,
+    valor: alerta.valor,
+    nivel: alerta.nivel,
+    accion: alerta.accion,
+    cerradaPor: "",
+    fechaCierre: "",
+    comentario: ""
+  }));
+  const cerradas = state.closedAlerts.map((alerta) => ({
+    estado: "Cerrada",
+    fecha: alerta.fecha,
+    residente: alerta.residente,
+    variable: alerta.variable,
+    valor: alerta.valor,
+    nivel: alerta.nivel,
+    accion: "",
+    cerradaPor: alerta.cerradaPor,
+    fechaCierre: alerta.fechaCierre,
+    comentario: alerta.comentario
+  }));
+  return [...abiertas, ...cerradas].sort((a, b) => parseRegistroDate(b.fecha) - parseRegistroDate(a.fecha));
+}
+
+function alertasCiclosInsuficientes() {
+  const minimo = Number(typeof CONTROL_MINIMO_DIARIO !== "undefined" ? CONTROL_MINIMO_DIARIO : 2);
+  const porResidenteDia = new Map();
+  REGISTROS_CAM
+    .filter((registro) => String(registro.tipo || "").toLowerCase().includes("control de ciclos"))
+    .forEach((registro) => {
+      const fecha = parseRegistroDate(registro.fecha);
+      const dia = isoDate(fecha);
+      const key = `${registro.residente}||${dia}`;
+      porResidenteDia.set(key, (porResidenteDia.get(key) || 0) + 1);
+    });
+
+  const today = new Date(2026, 5, 14, 23, 59);
+  const todayKey = isoDate(today);
+  const alertas = [];
+  RESIDENTES.forEach((resident) => {
+    CONTROL_DIAS.forEach((dayOffset) => {
+      const fechaControl = new Date(2026, 4, 16 + dayOffset);
+      const diaControl = isoDate(fechaControl);
+      if (diaControl >= todayKey) return;
+      const total = porResidenteDia.get(`${resident.nombre}||${diaControl}`) || 0;
+      if (total < minimo) {
+        const fechaAlerta = new Date(fechaControl);
+        fechaAlerta.setDate(fechaAlerta.getDate() + 1);
+        alertas.push({
+          fecha: `${isoDate(fechaAlerta)} 08:00`,
+          residente: resident.nombre,
+          variable: "Incumplimiento de Ciclos",
+          valor: `${total} control${total === 1 ? "" : "es"} registrado${total === 1 ? "" : "s"}`,
+          nivel: "Alerta",
+          color: "yellow",
+          accion: `Registrar tratamiento. Minimo requerido: ${minimo} controles de ciclos diarios.`
+        });
+      }
+    });
+  });
+  return alertas;
+}
+
+function isoDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function renderRangos(view) {
@@ -1622,7 +1820,7 @@ function powerBiExportData(days) {
   const nutricion = REGISTROS_NUTRI.filter(inPeriod).sort((a, b) => parseRegistroDate(b.fecha) - parseRegistroDate(a.fecha));
   const medicamentos = cam.filter((row) => row.tipo.toLowerCase().includes("medicamento"));
   const peso = CONTROLES_PESO.filter(inPeriod).sort((a, b) => parseAnyDate(b.fecha) - parseAnyDate(a.fecha));
-  const alertas = ALERTAS.filter(inPeriod).sort((a, b) => parseRegistroDate(b.fecha) - parseRegistroDate(a.fecha));
+  const alertas = todasLasAlertas().filter(inPeriod).sort((a, b) => parseRegistroDate(b.fecha) - parseRegistroDate(a.fecha));
   return { cam, controles, profesionales, nutricion, medicamentos, peso, alertas };
 }
 
@@ -1670,11 +1868,15 @@ function downloadPowerBiExcel(days) {
       ])}
     </body>
     </html>`;
+  downloadHtmlExcel(html, `export_powerbi_${days}_dias.xls`);
+}
+
+function downloadHtmlExcel(html, filename) {
   const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `export_powerbi_${days}_dias.xls`;
+  link.download = filename;
   document.body.appendChild(link);
   link.click();
   link.remove();
