@@ -15,7 +15,8 @@ const state = {
   closedAlertKeys: [],
   closedAlerts: [],
   alertExportFrom: "2026-06-01",
-  alertExportTo: "2026-06-15"
+  alertExportTo: "2026-06-15",
+  editReturnView: "registros"
 };
 
 const $ = (id) => document.getElementById(id);
@@ -113,6 +114,7 @@ function resetSessionState() {
   state.closedAlerts = [];
   state.alertExportFrom = "2026-06-01";
   state.alertExportTo = "2026-06-15";
+  state.editReturnView = "registros";
 }
 
 function logout() {
@@ -557,10 +559,10 @@ function camDetalle() {
 
 function renderMisRegistrosCam(view) {
   view.innerHTML = page("Mis registros CAM", "Los registros pueden editarse solo hasta 16 horas despues de su ingreso.") +
-    registrosTable(REGISTROS_CAM, ["Fecha", "Residente", "Usuario", "Turno", "Cuidadora", "Tipo", "Detalle"]);
+    registrosTable(REGISTROS_CAM, ["Fecha", "Residente", "Usuario", "Turno", "Cuidadora", "Tipo", "Detalle"], "cam", "misRegistrosCam");
 }
 
-function registrosTable(rows, headers) {
+function registrosTable(rows, headers, source = null, returnView = "registros") {
   const sortedRows = [...rows].sort((a, b) => {
     if (!a.fecha || !b.fecha) return 0;
     return parseRegistroDate(b.fecha) - parseRegistroDate(a.fecha);
@@ -570,9 +572,17 @@ function registrosTable(rows, headers) {
     <tbody>${sortedRows.map((r) => `<tr>
       ${headers.map((h) => `<td>${valueForHeader(r, h)}</td>`).join("")}
       <td>${r.editable ? '<span class="badge green">Editable</span>' : '<span class="badge red">Bloqueado</span>'}</td>
-      <td><button class="btn ${r.editable ? "secondary" : "ghost"}">${r.editable ? "Editar" : "No editable"}</button></td>
+      <td>${recordEditButton(r, source, returnView)}</td>
     </tr>`).join("")}</tbody>
   </table></div>`;
+}
+
+function recordEditButton(row, source, returnView) {
+  if (!row.editable) return `<button class="btn ghost" disabled>No editable</button>`;
+  if (!source) return `<button class="btn ghost" disabled>Editar</button>`;
+  const index = recordArray(source).indexOf(row);
+  if (index < 0) return `<button class="btn ghost" disabled>Editar</button>`;
+  return `<button class="btn secondary" onclick="startRecordEdit('${source}', ${index}, '${returnView}', true)">Editar</button>`;
 }
 
 function valueForHeader(row, header) {
@@ -1038,9 +1048,9 @@ function residentAlerts(resident) {
 
 function renderMisRegistrosProfesional(view) {
   const roleLabel = ROLES[state.role].label;
-  const rows = REGISTROS_PRO.filter((r) => r.rol === roleLabel || roleLabel === "Directora Tecnica" || roleLabel === "Enfermero");
+  const rows = REGISTROS_PRO.filter((r) => r.rol === roleLabel);
   view.innerHTML = page(`Mis registros ${roleLabel}`, "Los registros propios pueden editarse solo durante 16 horas.") +
-    registrosTable(rows, ["Fecha", "Residente", "Rol", "Registro"]);
+    registrosTable(rows, ["Fecha", "Residente", "Rol", "Registro"], "pro", "misRegistrosProfesional");
 }
 
 function renderFormularioNutri(view) {
@@ -1095,7 +1105,7 @@ function confirmNutri() {
 
 function renderMisRegistrosNutri(view) {
   view.innerHTML = page("Mis registros nutricionales", "Los registros pueden editarse solo hasta 16 horas despues de su ingreso.") +
-    registrosTable(REGISTROS_NUTRI, ["Fecha", "Residente", "IMC", "Observacion"]);
+    registrosTable(REGISTROS_NUTRI, ["Fecha", "Residente", "IMC", "Observacion"], "nutri", "misRegistrosNutri");
 }
 
 function renderFormulariosAdmin(view) {
@@ -1135,24 +1145,44 @@ function registrosUsuariosTable() {
   </table></div>`;
 }
 
-function startRecordEdit(source, index) {
+function startRecordEdit(source, index, returnView = "registros", requireEditable = false) {
   const row = recordArray(source)[index];
+  if (requireEditable && !row.editable) {
+    openModal("Registro bloqueado", "Este registro ya supero el periodo permitido de edicion.");
+    return;
+  }
+  state.editReturnView = returnView;
   const detalle = row.detalle || row.registro || row.observacion || "";
-  $("view").innerHTML = page("Editar registro de usuario", "Edicion administrativa para registros fuera del periodo normal de edicion.") +
+  const userReadonly = requireEditable && source === "pro" ? "readonly" : "";
+  $("view").innerHTML = page("Editar registro de usuario", editRecordHelpText(requireEditable)) +
     `<div class="form-section">
       <div class="grid3">
         <div><label>Fecha</label><input id="editRegistroFecha" value="${row.fecha || ""}"></div>
         <div><label>Residente</label><input id="editRegistroResidente" value="${row.residente || ""}" readonly></div>
-        <div><label>Usuario / rol</label><input id="editRegistroUsuario" value="${row.usuario || row.rol || "nutricion@hogarantu.cl"}"></div>
+        <div><label>Usuario / rol</label><input id="editRegistroUsuario" value="${recordUserValue(row, source)}" ${userReadonly}></div>
         ${source === "cam" ? `<div><label>Cuidadora</label><input id="editRegistroCuidadora" value="${row.cuidadora || ""}"></div>` : ""}
       </div>
       <label>Detalle del registro</label>
       <textarea id="editRegistroDetalle">${detalle}</textarea>
       <div class="form-actions">
         <button class="btn primary" onclick="saveRecordEdit('${source}', ${index})">Guardar cambios</button>
-        <button class="btn ghost" onclick="go('registros')">Cancelar</button>
+        <button class="btn ghost" onclick="go('${returnView}')">Cancelar</button>
       </div>
     </div>`;
+}
+
+function recordUserValue(row, source) {
+  if (row.usuario) return row.usuario;
+  if (source === "pro") {
+    return row.rol === "Enfermero" ? "enfermero@hogarantu.cl" : "dt@hogarantu.cl";
+  }
+  return row.rol || "nutricion@hogarantu.cl";
+}
+
+function editRecordHelpText(requireEditable) {
+  return requireEditable
+    ? "Puede corregir este registro porque aun se encuentra dentro del periodo permitido de edicion."
+    : "Edicion administrativa para registros fuera del periodo normal de edicion.";
 }
 
 function saveRecordEdit(source, index) {
@@ -1164,13 +1194,13 @@ function saveRecordEdit(source, index) {
       row.cuidadora = $("editRegistroCuidadora").value;
       row.detalle = $("editRegistroDetalle").value;
     } else if (source === "pro") {
-      row.rol = $("editRegistroUsuario").value;
+      row.usuario = $("editRegistroUsuario").value;
       row.registro = $("editRegistroDetalle").value;
     } else {
       row.observacion = $("editRegistroDetalle").value;
     }
     row.editable = true;
-    state.view = "registros";
+    state.view = state.editReturnView || "registros";
     renderShell();
   });
 }
