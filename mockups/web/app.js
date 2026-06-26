@@ -606,26 +606,87 @@ function renderFormularioProfesional(rol) {
       <label>Evolucion / registro ${rol}</label>
       <textarea id="proTexto"></textarea>
     </div>
+    ${toggle("chkProCiclos", "Toma de ciclos")}
+    <div id="secProCiclos" class="form-section hidden">
+      <h2>Toma de ciclos</h2>
+      <div class="notice">Esta toma quedara asociada al residente seleccionado arriba y al usuario profesional que ingresa el registro.</div>
+      <div class="grid3">
+        <div><label>Temperatura C</label><input id="proTemp" type="number" step="0.1" placeholder="36.8"></div>
+        <div><label>Saturacion %</label><input id="proSpo2" type="number" placeholder="96"></div>
+        <div><label>Presion arterial mmHg</label><input id="proPa" placeholder="125/80"></div>
+        <div><label>HGT / Glucosa mg/dL</label><input id="proHgt" type="number" placeholder="110"></div>
+        <div><label>Observacion ciclos</label><input id="proObsCiclos" placeholder="Opcional"></div>
+      </div>
+    </div>
     <button class="btn primary" onclick="confirmProfesional('${rol}')">Guardar registro</button>`;
   $("proResidente").addEventListener("change", () => {
     const resident = RESIDENTES.find((r) => r.id === Number($("proResidente").value));
     $("proFicha").innerHTML = residentProfile(resident);
   });
+  bindProfessionalCycleToggle();
 }
 
 function confirmProfesional(rol) {
   const resident = RESIDENTES.find((r) => r.id === Number($("proResidente").value));
+  const fechaHora = `${$("proFecha").value || "2026-06-14"} ${$("proHora").value || "10:00"}`;
+  const incluyeCiclos = $("chkProCiclos").checked;
+  if (incluyeCiclos && !professionalCyclesValid()) {
+    openModal("Toma de ciclos", "Debe completar temperatura, saturacion, presion arterial y HGT/Glucosa para guardar la toma de ciclos.");
+    return;
+  }
   openModal(`Confirmar registro ${rol}`, `Esta seguro que desea agregar este registro al residente ${resident.nombre}?`, () => {
+    const registro = $("proTexto").value || "Registro sin detalle.";
     REGISTROS_PRO.unshift({
-      fecha: `${$("proFecha").value || "2026-06-14"} ${$("proHora").value || "10:00"}`,
+      fecha: fechaHora,
       residente: resident.nombre,
       rol,
-      registro: $("proTexto").value || "Registro sin detalle.",
+      registro: incluyeCiclos ? `${registro} Se agrega toma de ciclos profesional: ${professionalCyclesDetail()}` : registro,
       editable: true
     });
+    if (incluyeCiclos) {
+      CONTROLES_CICLOS.push(professionalCycleRecord(resident, rol, fechaHora));
+    }
     state.view = "misRegistrosProfesional";
     renderShell();
   });
+}
+
+function bindProfessionalCycleToggle() {
+  const checkbox = $("chkProCiclos");
+  const section = $("secProCiclos");
+  if (!checkbox || !section) return;
+  checkbox.addEventListener("change", () => section.classList.toggle("hidden", !checkbox.checked));
+}
+
+function professionalCyclesValid() {
+  return Boolean($("proTemp").value && $("proSpo2").value && $("proPa").value && $("proHgt").value);
+}
+
+function professionalCycleRecord(resident, rol, fechaHora) {
+  const pressure = parsePressure($("proPa").value);
+  return {
+    residente: resident.nombre,
+    fecha: fechaHora,
+    temp: Number(Number($("proTemp").value).toFixed(1)),
+    spo2: Number($("proSpo2").value),
+    pad: pressure.diastolica,
+    hgt: Number($("proHgt").value),
+    origen: rol,
+    usuario: rol === "Enfermero" ? "enfermero@hogarantu.cl" : "dt@hogarantu.cl",
+    observacion: $("proObsCiclos").value || "Toma de ciclos profesional."
+  };
+}
+
+function professionalCyclesDetail() {
+  return `Temp ${$("proTemp").value} C, Sat ${$("proSpo2").value}%, PA ${$("proPa").value}, HGT ${$("proHgt").value}. ${$("proObsCiclos").value || ""}`.trim();
+}
+
+function parsePressure(value) {
+  const parts = String(value || "").split("/").map((part) => Number(part.trim()));
+  return {
+    sistolica: Number.isFinite(parts[0]) ? parts[0] : null,
+    diastolica: Number.isFinite(parts[1]) ? parts[1] : Number(parts[0] || 0)
+  };
 }
 
 function renderDashboardResidente(view) {
@@ -719,7 +780,7 @@ function chartCard(config, data, key) {
       <polyline points="${line}" fill="none" stroke="#188f8f" stroke-width="3" />
       ${points.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="4" fill="${hasLimits ? statusColor(point.value, normalLow, normalHigh) : "#188f8f"}"><title>${point.fecha}: ${point.value} ${unit}</title></circle>`).join("")}
       ${points.map((point) => `<text x="${point.x - 8}" y="${Math.max(12, point.y - 8)}" font-size="7.5" font-weight="700" fill="#263238">${point.value}</text>`).join("")}
-      ${points.map((point) => `<text x="${point.x - 9}" y="${height - 10}" font-size="7.5" font-weight="700" fill="#465154">${point.fecha.slice(0, 5)}</text>`).join("")}
+      ${points.map((point) => `<text x="${point.x - 9}" y="${height - 10}" font-size="7.5" font-weight="700" fill="#465154">${chartDateLabel(point.fecha)}</text>`).join("")}
     </svg>
     <div class="legend">
       ${hasLimits ? '<span><i class="dot green"></i>Normal</span><span><i class="dot yellow"></i>Alerta</span><span><i class="dot red"></i>Critico</span>' : '<span><i class="dot green"></i>Seguimiento</span>'}
@@ -776,7 +837,7 @@ function chartCardReport(config, data, key) {
       <polyline points="${line}" fill="none" stroke="#188f8f" stroke-width="2.4" />
       ${points.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="3.2" fill="${statusColor(point.value, normalLow, normalHigh)}"><title>${point.fecha}: ${point.value} ${unit}</title></circle>`).join("")}
       ${points.map((point) => `<text x="${point.x - 8}" y="${Math.max(12, point.y - 7)}" font-size="6.8" font-weight="700" fill="#263238">${point.value}</text>`).join("")}
-      ${points.filter((point) => point.showLabel).map((point) => `<text x="${point.x - 13}" y="${height - 10}" font-size="7" font-weight="700" fill="#465154">${point.fecha.slice(0, 5)}</text>`).join("")}
+      ${points.filter((point) => point.showLabel).map((point) => `<text x="${point.x - 13}" y="${height - 10}" font-size="7" font-weight="700" fill="#465154">${chartDateLabel(point.fecha)}</text>`).join("")}
     </svg>
     <div class="legend">
       <span><i class="dot green"></i>Normal</span><span><i class="dot yellow"></i>Alerta</span><span><i class="dot red"></i>Critico</span>
@@ -839,6 +900,13 @@ function formatChartNumber(value) {
   return Number.isInteger(value) ? value : value.toFixed(1);
 }
 
+function chartDateLabel(value) {
+  const datePart = String(value || "").split(" ")[0];
+  const parts = datePart.split("-");
+  if (parts.length === 3) return `${parts[2]}-${parts[1]}`;
+  return datePart.slice(0, 5);
+}
+
 function statusColor(value, normalLow, normalHigh) {
   if (value >= normalLow && value <= normalHigh) return "#1f8f4d";
   const distance = Math.min(Math.abs(value - normalLow), Math.abs(value - normalHigh));
@@ -848,10 +916,10 @@ function statusColor(value, normalLow, normalHigh) {
 function controlesTable(resident) {
   const data = ultimosControlesSemana(resident);
   return `<div class="card table-wrap">
-    <h2>Bitacora CAM ultimos 5 dias</h2>
+    <h2>Controles de ciclos ultimos 5 dias</h2>
     <table>
-      <thead><tr><th>Fecha</th><th>Temperatura</th><th>Saturacion</th><th>Presion diastolica</th><th>HGT</th></tr></thead>
-      <tbody>${data.map((row) => `<tr><td>${row.fecha}</td><td>${row.temp} C</td><td>${row.spo2} %</td><td>${row.pad} mmHg</td><td>${row.hgt} mg/dL</td></tr>`).join("")}</tbody>
+      <thead><tr><th>Fecha</th><th>Origen</th><th>Usuario</th><th>Temperatura</th><th>Saturacion</th><th>Presion diastolica</th><th>HGT</th></tr></thead>
+      <tbody>${data.map((row) => `<tr><td>${row.fecha}</td><td>${row.origen || "CAM"}</td><td>${row.usuario || "-"}</td><td>${row.temp} C</td><td>${row.spo2} %</td><td>${row.pad} mmHg</td><td>${row.hgt} mg/dL</td></tr>`).join("")}</tbody>
     </table>
   </div>`;
 }
