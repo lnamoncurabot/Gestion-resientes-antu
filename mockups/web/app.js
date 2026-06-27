@@ -303,7 +303,16 @@ function residentProfile(r) {
 }
 
 function field(label, value) {
-  return `<div class="field"><small>${label}</small><b>${value}</b></div>`;
+  return `<div class="field"><small>${label}</small><b>${formatFieldValue(label, value)}</b></div>`;
+}
+
+function formatFieldValue(label, value) {
+  if (/peso|imc/i.test(String(label || ""))) return formatDecimalText(value);
+  return value;
+}
+
+function formatDecimalText(value) {
+  return String(value ?? "").replace(/(\d+)\.(\d+)/g, "$1,$2");
 }
 
 function residentsTable(admin) {
@@ -924,8 +933,8 @@ function chartCard(config, data, key) {
       ${hasLimits ? `<line x1="${padding}" y1="${yHigh}" x2="${width - padding}" y2="${yHigh}" stroke="#475569" stroke-dasharray="5 4" />` : ""}
       ${hasLimits ? `<line x1="${padding}" y1="${yLow}" x2="${width - padding}" y2="${yLow}" stroke="#475569" stroke-dasharray="5 4" />` : ""}
       <polyline points="${line}" fill="none" stroke="#188f8f" stroke-width="3" />
-      ${points.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="4" fill="${hasLimits ? statusColor(point.value, normalLow, normalHigh) : "#188f8f"}"><title>${point.fecha}: ${point.value} ${unit}</title></circle>`).join("")}
-      ${points.map((point) => `<text x="${point.x - 8}" y="${Math.max(12, point.y - 8)}" font-size="7.5" font-weight="700" fill="#263238">${point.value}</text>`).join("")}
+      ${points.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="4" fill="${hasLimits ? statusColor(point.value, normalLow, normalHigh) : "#188f8f"}"><title>${point.fecha}: ${formatChartNumber(point.value)} ${unit}</title></circle>`).join("")}
+      ${points.map((point) => `<text x="${point.x - 8}" y="${Math.max(12, point.y - 8)}" font-size="7.5" font-weight="700" fill="#263238">${formatChartNumber(point.value)}</text>`).join("")}
       ${points.map((point) => `<text x="${point.x - 9}" y="${height - 10}" font-size="7.5" font-weight="700" fill="#465154">${chartDateLabel(point.fecha)}</text>`).join("")}
     </svg>
     <div class="legend">
@@ -983,8 +992,8 @@ function chartCardReport(config, data, key) {
       <line x1="${padding}" y1="${yHigh}" x2="${width - padding}" y2="${yHigh}" stroke="#475569" stroke-dasharray="5 4" />
       <line x1="${padding}" y1="${yLow}" x2="${width - padding}" y2="${yLow}" stroke="#475569" stroke-dasharray="5 4" />
       <polyline points="${line}" fill="none" stroke="#188f8f" stroke-width="2.4" />
-      ${points.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="3.2" fill="${statusColor(point.value, normalLow, normalHigh)}"><title>${point.fecha}: ${point.value} ${unit}</title></circle>`).join("")}
-      ${points.map((point) => `<text x="${point.x - 8}" y="${Math.max(12, point.y - 7)}" font-size="6.8" font-weight="700" fill="#263238">${point.value}</text>`).join("")}
+      ${points.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="3.2" fill="${statusColor(point.value, normalLow, normalHigh)}"><title>${point.fecha}: ${formatChartNumber(point.value)} ${unit}</title></circle>`).join("")}
+      ${points.map((point) => `<text x="${point.x - 8}" y="${Math.max(12, point.y - 7)}" font-size="6.8" font-weight="700" fill="#263238">${formatChartNumber(point.value)}</text>`).join("")}
       ${points.filter((point) => point.showLabel).map((point) => `<text x="${point.x - 13}" y="${height - 10}" font-size="7" font-weight="700" fill="#465154">${chartDateLabel(point.fecha)}</text>`).join("")}
     </svg>
     <div class="legend">
@@ -1008,7 +1017,7 @@ function pesoMensualCard(resident) {
     ${pesoChart(pesos)}
     <table>
       <thead><tr><th>Fecha control</th><th>Peso</th><th>Minuta / regimen indicado</th></tr></thead>
-      <tbody>${pesos.map((row) => `<tr><td>${row.fecha}</td><td>${row.peso} kg</td><td>${row.regimen}</td></tr>`).join("")}</tbody>
+      <tbody>${pesos.map((row) => `<tr><td>${row.fecha}</td><td>${formatDecimalText(row.peso)} kg</td><td>${row.regimen}</td></tr>`).join("")}</tbody>
     </table>
     ${ultimo ? `<p><b>Ultima indicacion:</b> ${ultimo.regimen}</p>` : ""}
   </div>`;
@@ -1038,14 +1047,15 @@ function pesoChart(pesos) {
     <text x="8" y="${padding + 4}" font-size="11" font-weight="700" fill="#465154">${formatChartNumber(maxValue)} kg</text>
     <text x="8" y="${height - padding}" font-size="11" font-weight="700" fill="#465154">${formatChartNumber(minValue)} kg</text>
     <polyline points="${line}" fill="none" stroke="#4f46e5" stroke-width="3" />
-    ${points.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="4" fill="#4f46e5"><title>${point.fecha}: ${point.value} kg</title></circle>`).join("")}
+    ${points.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="4" fill="#4f46e5"><title>${point.fecha}: ${formatChartNumber(point.value)} kg</title></circle>`).join("")}
     ${points.map((point) => `<text x="${point.x - 24}" y="${height - 12}" font-size="10" font-weight="700" fill="#465154">${point.fecha.slice(5)}</text>`).join("")}
-    ${points.map((point) => `<text x="${point.x - 14}" y="${point.y - 10}" font-size="10" font-weight="700" fill="#263238">${point.value} kg</text>`).join("")}
+    ${points.map((point) => `<text x="${point.x - 14}" y="${point.y - 10}" font-size="10" font-weight="700" fill="#263238">${formatChartNumber(point.value)} kg</text>`).join("")}
   </svg>`;
 }
 
 function formatChartNumber(value) {
-  return Number.isInteger(value) ? value : value.toFixed(1);
+  const formatted = Number.isInteger(value) ? String(value) : Number(value).toFixed(1);
+  return formatted.replace(".", ",");
 }
 
 function chartDateLabel(value) {
@@ -1104,6 +1114,14 @@ function usuarioCamPorTurno(turno) {
 function medicamentoFecha(row) {
   if (!row.horaMedicamento) return row.fecha;
   return `${row.fecha.split(" ")[0]} ${row.horaMedicamento}`;
+}
+
+function medicamentoDia(row) {
+  return String(medicamentoFecha(row) || "").split(" ")[0] || "-";
+}
+
+function medicamentoHora(row) {
+  return String(medicamentoFecha(row) || "").split(" ")[1] || "-";
 }
 
 function inferMedicamento(detalle) {
@@ -2118,13 +2136,13 @@ function reportMedicationTable(rows, limit = null) {
     <h2>Control De Medicamentos</h2>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Fecha</th><th>Remedio</th><th>Usuario</th><th>Cuidadora</th><th>Detalle</th></tr></thead>
+        <thead><tr><th>Fecha</th><th>Hora</th><th>Usuario</th><th>Responsable</th><th>Remedio</th></tr></thead>
         <tbody>${medicamentos.map((row) => `<tr>
-          <td>${medicamentoFecha(row)}</td>
-          <td>${row.medicamento || inferMedicamento(row.detalle)}</td>
+          <td>${medicamentoDia(row)}</td>
+          <td>${medicamentoHora(row)}</td>
           <td>${row.usuario || usuarioCamPorTurno(row.turno)}</td>
-          <td>${row.cuidadora}</td>
-          <td>${row.detalle}</td>
+          <td>${row.cuidadora || row.rol || "-"}</td>
+          <td>${row.medicamento || inferMedicamento(row.detalle || row.registro)}</td>
         </tr>`).join("") || `<tr><td colspan="5">Sin medicamentos registrados en el periodo.</td></tr>`}</tbody>
       </table>
     </div>
@@ -2174,21 +2192,21 @@ function reportData(resident, days) {
       fecha: registro.fecha,
       date: parseRegistroDate(registro.fecha),
       tipo: `CAM / ${registro.tipo}`,
-      detalle: `<b>Usuario:</b> ${registro.usuario || usuarioCamPorTurno(registro.turno)}. <b>Cuidadora:</b> ${registro.cuidadora}. ${registro.detalle}`,
+      detalle: formatDecimalText(`<b>Usuario:</b> ${registro.usuario || usuarioCamPorTurno(registro.turno)}. <b>Cuidadora:</b> ${registro.cuidadora}. ${registro.detalle}`),
       clase: "timeline-cam"
     })),
     ...pro.map((registro) => ({
       fecha: registro.fecha,
       date: parseRegistroDate(registro.fecha),
       tipo: registro.rol,
-      detalle: registro.registro,
+      detalle: formatDecimalText(registro.registro),
       clase: registro.rol === "Enfermero" ? "timeline-enfermero" : "timeline-dt"
     })),
     ...nutri.map((registro) => ({
       fecha: registro.fecha,
       date: parseRegistroDate(registro.fecha),
       tipo: "Nutricionista",
-      detalle: `<b>IMC:</b> ${registro.imc}. ${registro.observacion}`,
+      detalle: formatDecimalText(`<b>IMC:</b> ${registro.imc}. ${registro.observacion}`),
       clase: "timeline-nutri"
     }))
   ].sort((a, b) => b.date - a.date);
@@ -2296,8 +2314,8 @@ function reportEmailHtml(resident, days, data) {
       </table>
       <h2>Control De Medicamentos</h2>
       <table>
-        <thead><tr><th>Fecha</th><th>Remedio</th><th>Usuario</th><th>Cuidadora</th></tr></thead>
-        <tbody>${data.medicamentos.slice(0, 20).map((row) => `<tr><td>${escapeHtml(medicamentoFecha(row))}</td><td>${escapeHtml(row.medicamento || inferMedicamento(row.detalle))}</td><td>${escapeHtml(row.usuario || usuarioCamPorTurno(row.turno))}</td><td>${escapeHtml(row.cuidadora)}</td></tr>`).join("") || `<tr><td colspan="4">Sin medicamentos registrados.</td></tr>`}</tbody>
+        <thead><tr><th>Fecha</th><th>Hora</th><th>Usuario</th><th>Responsable</th><th>Remedio</th></tr></thead>
+        <tbody>${data.medicamentos.slice(0, 20).map((row) => `<tr><td>${escapeHtml(medicamentoDia(row))}</td><td>${escapeHtml(medicamentoHora(row))}</td><td>${escapeHtml(row.usuario || usuarioCamPorTurno(row.turno))}</td><td>${escapeHtml(row.cuidadora || row.rol || "-")}</td><td>${escapeHtml(row.medicamento || inferMedicamento(row.detalle || row.registro))}</td></tr>`).join("") || `<tr><td colspan="5">Sin medicamentos registrados.</td></tr>`}</tbody>
       </table>
       <p>Prueba rapida: el producto final enviara este contenido como PDF adjunto.</p>
     </body>

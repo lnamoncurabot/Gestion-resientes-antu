@@ -807,6 +807,16 @@ th {
     width: 100%;
   }
 
+  .print-report .grid3,
+  .print-report .report-personal-data {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .print-report .field {
+    min-width: 0;
+  }
+
   .no-print {
     display: none !important;
   }
