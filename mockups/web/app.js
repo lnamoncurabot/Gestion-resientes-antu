@@ -703,6 +703,13 @@ function renderFormularioProfesional(rol) {
         <div><label>Observacion ciclos</label><input id="proObsCiclos" placeholder="Opcional"></div>
       </div>
     </div>
+    <div class="form-section">
+      <h2>Diuresis / deposicion</h2>
+      <div class="grid3">
+        <div><label>Tipo</label><select id="proDespicheTipo"><option>Diuresis</option><option>Deposicion</option></select></div>
+        <div><label>Resultado</label><select id="proDespicheResultado"><option>Si</option><option>No</option></select></div>
+      </div>
+    </div>
     <button class="btn primary" onclick="confirmProfesional('${rol}')">Guardar registro</button>`;
   $("proResidente").addEventListener("change", () => {
     const resident = RESIDENTES.find((r) => r.id === Number($("proResidente").value));
@@ -731,7 +738,9 @@ function confirmProfesional(rol) {
       fecha: fechaHora,
       residente: resident.nombre,
       rol,
-      registro: incluyeCiclos ? `${registro} Se agrega toma de ciclos profesional: ${professionalCyclesDetail()}` : registro,
+      registro: professionalRecordDetail(registro, incluyeCiclos),
+      despicheTipo: $("proDespicheTipo").value,
+      despicheResultado: $("proDespicheResultado").value,
       editable: true
     });
     if (incluyeCiclos) {
@@ -789,6 +798,17 @@ function professionalCycleRecord(resident, rol, fechaHora) {
 
 function professionalCyclesDetail() {
   return `Temp ${$("proTemp").value} C, Sat ${$("proSpo2").value}%, PA ${$("proPa").value}, HGT ${$("proHgt").value}. ${$("proObsCiclos").value || ""}`.trim();
+}
+
+function professionalDespicheDetail() {
+  return `${$("proDespicheTipo").value}: ${$("proDespicheResultado").value}.`;
+}
+
+function professionalRecordDetail(registro, incluyeCiclos) {
+  const parts = [registro];
+  if (incluyeCiclos) parts.push(`Se agrega toma de ciclos profesional: ${professionalCyclesDetail()}`);
+  parts.push(professionalDespicheDetail());
+  return parts.join(" ");
 }
 
 function parsePressure(value) {
@@ -1569,7 +1589,7 @@ function alertasCiclosInsuficientes() {
 function alertasDespicheConsecutivo() {
   const alertas = [];
   RESIDENTES.forEach((resident) => {
-    const registros = REGISTROS_CAM
+    const registros = registrosDespiche()
       .filter((registro) => registro.residente === resident.nombre)
       .filter((registro) => registro.despicheResultado)
       .sort((a, b) => parseRegistroDate(a.fecha) - parseRegistroDate(b.fecha));
@@ -1594,6 +1614,13 @@ function alertasDespicheConsecutivo() {
     });
   });
   return alertas;
+}
+
+function registrosDespiche() {
+  return [
+    ...REGISTROS_CAM.map((registro) => ({ ...registro, origenDespiche: "CAM" })),
+    ...REGISTROS_PRO.map((registro) => ({ ...registro, origenDespiche: registro.rol || "Profesional" }))
+  ];
 }
 
 function isoDate(date) {
