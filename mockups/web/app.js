@@ -280,7 +280,7 @@ function residentSearchPanel() {
         <button class="btn primary" id="acceptResidentSearch">Aceptar</button>
       </div>
     </div>
-    <div class="notice">Al aceptar se actualizan la ficha, bitacora de los ultimos 5 dias, alertas y graficas del residente seleccionado.</div>
+    <div class="notice">Al aceptar se actualizan la ficha, bitacora ejecutiva de los ultimos 15 dias, alertas y graficas del residente seleccionado.</div>
   </div>`;
 }
 
@@ -465,8 +465,8 @@ function renderFormularioCam(view) {
         <div><label>Residente *</label>${residentSelect("camResidente")}</div>
       </div>
     </div>
-    <label class="toggle-row"><input type="checkbox" id="chkCiclos" checked disabled> Registrar control de ciclos obligatorio</label>
-    <div id="secCiclos" class="form-section">
+    ${toggle("chkCiclos", "Registrar control de ciclos")}
+    <div id="secCiclos" class="form-section hidden">
       <h2>Control de ciclos</h2>
       <div class="grid3">
         <div><label>Temperatura C</label><input id="camTemp" type="number" step="0.1" placeholder="36.8"></div>
@@ -510,7 +510,6 @@ function bindToggles() {
     const checkbox = $(chk);
     const section = $(sec);
     if (checkbox && section) {
-      if (checkbox.disabled) return;
       checkbox.addEventListener("change", () => section.classList.toggle("hidden", !checkbox.checked));
     }
   });
@@ -579,11 +578,17 @@ function confirmCam() {
   if (!$("camFecha").value) faltantes.push("fecha");
   if (!$("camHora").value) faltantes.push("hora");
   if (!$("camResidente").value) faltantes.push("residente");
-  if (!$("chkCiclos").checked) faltantes.push("control de ciclos");
-  if (!$("camTemp").value) faltantes.push("temperatura");
-  if (!$("camSpo2").value) faltantes.push("saturacion");
-  if (!$("camPa").value) faltantes.push("presion arterial");
-  if (!$("camHgt").value) faltantes.push("HGT / glucosa");
+  if (!$("chkCiclos").checked && !$("chkMed").checked && !$("chkObs").checked) {
+    faltantes.push("control de ciclos, administracion de medicamentos u observacion");
+  }
+  if ($("chkCiclos").checked) {
+    if (!$("camTemp").value) faltantes.push("temperatura");
+    if (!$("camSpo2").value) faltantes.push("saturacion");
+    if (!$("camPa").value) faltantes.push("presion arterial");
+    if (!$("camHgt").value) faltantes.push("HGT / glucosa");
+  }
+  if ($("chkMed").checked && !$("camMed").value.trim()) faltantes.push("nombre medicamento");
+  if ($("chkObs").checked && !$("camObs").value.trim()) faltantes.push("detalle de observacion");
   if (faltantes.length) {
     openModal("Campos obligatorios", `Debe completar: ${faltantes.join(", ")}.`);
     return;
@@ -1103,17 +1108,17 @@ function bitacoraResidente(resident) {
     : `<div class="notice">Sin registros para el periodo seleccionado en esta maqueta.</div>`;
   return `<div class="card">
     <h2>Bitacora resumen de registros</h2>
-    <div class="notice">Incluye registros CAM de los ultimos 5 dias, Directora Tecnica y Enfermero del ultimo mes, y registros de Nutricionista. Orden: fecha decreciente.</div>
+    <div class="notice">Incluye ultimos 15 dias: Directora Tecnica, Enfermero y Nutricionista. De cuidadoras solo muestra administracion de medicamentos o registros asociados a alertas. Orden: fecha decreciente.</div>
     ${content}
   </div>`;
 }
 
 function bitacoraResumenEntries(resident) {
-  const today = new Date(2026, 5, 14, 23, 59);
-  const camLimit = daysBefore(today, 5);
-  const monthLimit = daysBefore(today, 30);
+  const today = dashboardReferenceDate();
+  const limit = daysBefore(today, 15);
   const camEntries = REGISTROS_CAM
-    .filter((registro) => registro.residente === resident.nombre && parseRegistroDate(registro.fecha) >= camLimit)
+    .filter((registro) => registro.residente === resident.nombre && parseRegistroDate(registro.fecha) >= limit && parseRegistroDate(registro.fecha) <= today)
+    .filter((registro) => camRegistroEjecutivo(registro))
     .map((registro) => ({
       fecha: registro.fecha,
       date: parseRegistroDate(registro.fecha),
@@ -1122,7 +1127,7 @@ function bitacoraResumenEntries(resident) {
       clase: "timeline-cam"
     }));
   const profesionalEntries = REGISTROS_PRO
-    .filter((registro) => registro.residente === resident.nombre && parseRegistroDate(registro.fecha) >= monthLimit)
+    .filter((registro) => registro.residente === resident.nombre && parseRegistroDate(registro.fecha) >= limit && parseRegistroDate(registro.fecha) <= today)
     .map((registro) => ({
       fecha: registro.fecha,
       date: parseRegistroDate(registro.fecha),
@@ -1131,7 +1136,7 @@ function bitacoraResumenEntries(resident) {
       clase: registro.rol === "Enfermero" ? "timeline-enfermero" : "timeline-dt"
     }));
   const nutriEntries = REGISTROS_NUTRI
-    .filter((registro) => registro.residente === resident.nombre)
+    .filter((registro) => registro.residente === resident.nombre && parseRegistroDate(registro.fecha) >= limit && parseRegistroDate(registro.fecha) <= today)
     .map((registro) => ({
       fecha: registro.fecha,
       date: parseRegistroDate(registro.fecha),
@@ -1141,6 +1146,61 @@ function bitacoraResumenEntries(resident) {
     }));
   return [...camEntries, ...profesionalEntries, ...nutriEntries]
     .sort((a, b) => b.date - a.date);
+}
+
+function dashboardReferenceDate() {
+  return new Date(2026, 5, 14, 23, 59);
+}
+
+function camRegistroEjecutivo(registro) {
+  return camRegistroTieneMedicamento(registro) || camRegistroTieneAlerta(registro);
+}
+
+function camRegistroTieneMedicamento(registro) {
+  return String(registro.tipo || "").toLowerCase().includes("medicamento") || Boolean(registro.medicamento);
+}
+
+function camRegistroTieneAlerta(registro) {
+  return camRegistroFueraDeRango(registro) || registroDespicheAsociadoAAlerta(registro) || alertaMismaFechaResidente(registro);
+}
+
+function camRegistroFueraDeRango(registro) {
+  const valores = extractCamVitals(registro.detalle);
+  if (valores.temp !== null && (valores.temp < UMBRALES_CICLOS.temp.normalLow || valores.temp > UMBRALES_CICLOS.temp.normalHigh)) return true;
+  if (valores.spo2 !== null && (valores.spo2 < UMBRALES_CICLOS.spo2.normalLow || valores.spo2 > UMBRALES_CICLOS.spo2.normalHigh)) return true;
+  if (valores.pad !== null && (valores.pad < UMBRALES_CICLOS.pad.normalLow || valores.pad > UMBRALES_CICLOS.pad.normalHigh)) return true;
+  if (valores.hgt !== null && (valores.hgt < UMBRALES_CICLOS.hgt.normalLow || valores.hgt > UMBRALES_CICLOS.hgt.normalHigh)) return true;
+  return false;
+}
+
+function extractCamVitals(detalle) {
+  const text = String(detalle || "");
+  const pa = text.match(/PA\s+\d+\/(\d+)/i);
+  return {
+    temp: numberMatch(text, /Temp\s+([\d.]+)/i),
+    spo2: numberMatch(text, /Sat\s+(\d+)/i),
+    pad: pa ? Number(pa[1]) : null,
+    hgt: numberMatch(text, /HGT\s+(\d+)/i)
+  };
+}
+
+function numberMatch(text, pattern) {
+  const match = text.match(pattern);
+  return match ? Number(match[1]) : null;
+}
+
+function registroDespicheAsociadoAAlerta(registro) {
+  if (String(registro.despicheResultado || "").toLowerCase() !== "no") return false;
+  return alertasDespicheConsecutivo().some((alerta) => alerta.residente === registro.residente);
+}
+
+function alertaMismaFechaResidente(registro) {
+  const registroDate = parseRegistroDate(registro.fecha);
+  return ALERTAS.some((alerta) => alerta.residente === registro.residente && sameDay(parseRegistroDate(alerta.fecha), registroDate));
+}
+
+function sameDay(a, b) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
 function daysBefore(date, days) {
@@ -1848,13 +1908,14 @@ function reportPersonalData(resident) {
 }
 
 function reportBitacoraLastFive(resident, limit = null) {
-  const data = reportData(resident, 5);
+  const data = reportData(resident, Number(state.pdfPeriodDays || state.pdfGeneratedDays || 15));
   const entries = Number(limit) ? data.entries.slice(0, limit) : data.entries;
-  return `<h3>Bitacora ultimos 5 dias</h3>
+  return `<h3>Bitacora ejecutiva del periodo</h3>
+    <div class="notice">Incluye registros DT, Enfermero y Nutricionista. De cuidadoras solo considera medicamentos o registros asociados a alertas.</div>
     ${entries.map((entry) => `<div class="timeline ${entry.clase}">
       <b>${entry.fecha} | ${entry.tipo}</b>
       <p>${entry.detalle}</p>
-    </div>`).join("") || `<div class="notice">Sin registros en los ultimos 5 dias.</div>`}`;
+    </div>`).join("") || `<div class="notice">Sin registros ejecutivos en el periodo.</div>`}`;
 }
 
 function reportMedicationTable(rows, limit = null) {
@@ -1903,6 +1964,7 @@ function reportData(resident, days) {
   const start = daysBefore(today, days);
   const inPeriod = (row) => parseRegistroDate(row.fecha) >= start && parseRegistroDate(row.fecha) <= today;
   const cam = REGISTROS_CAM.filter((row) => row.residente === resident.nombre && inPeriod(row));
+  const camEjecutivo = cam.filter((row) => camRegistroEjecutivo(row));
   const pro = REGISTROS_PRO.filter((row) => row.residente === resident.nombre && inPeriod(row));
   const nutri = REGISTROS_NUTRI.filter((row) => row.residente === resident.nombre && inPeriod(row));
   const controles = CONTROLES_CICLOS
@@ -1912,7 +1974,7 @@ function reportData(resident, days) {
     .filter((row) => row.tipo.toLowerCase().includes("medicamento"))
     .sort((a, b) => parseRegistroDate(b.fecha) - parseRegistroDate(a.fecha));
   const entries = [
-    ...cam.map((registro) => ({
+    ...camEjecutivo.map((registro) => ({
       fecha: registro.fecha,
       date: parseRegistroDate(registro.fecha),
       tipo: `CAM / ${registro.tipo}`,
@@ -1934,7 +1996,7 @@ function reportData(resident, days) {
       clase: "timeline-nutri"
     }))
   ].sort((a, b) => b.date - a.date);
-  return { cam, pro, nutri, controles, medicamentos, entries };
+  return { cam, camEjecutivo, pro, nutri, controles, medicamentos, entries };
 }
 
 function generatePdfReport(resident, days) {
@@ -2028,8 +2090,8 @@ function reportEmailHtml(resident, days, data) {
         <tr><th>Apoderado</th><td>${escapeHtml(resident.apoderado)}</td><th>Mail</th><td>${escapeHtml(resident.mail)}</td></tr>
         <tr><th>Patologias</th><td colspan="3">${escapeHtml(resident.patologias)}</td></tr>
       </table>
-      <h2>Bitacora ultimos 5 dias</h2>
-      ${reportData(resident, 5).entries.slice(0, 12).map((entry) => `<div class="item"><b>${escapeHtml(entry.fecha)} | ${escapeHtml(entry.tipo)}</b><br>${entry.detalle}</div>`).join("") || "<p>Sin registros recientes.</p>"}
+      <h2>Bitacora ejecutiva del periodo</h2>
+      ${data.entries.slice(0, 12).map((entry) => `<div class="item"><b>${escapeHtml(entry.fecha)} | ${escapeHtml(entry.tipo)}</b><br>${entry.detalle}</div>`).join("") || "<p>Sin registros ejecutivos en el periodo.</p>"}
       <h2>Resumen del periodo</h2>
       <table>
         <tr><th>Registros CAM</th><td>${data.cam.length}</td></tr>
