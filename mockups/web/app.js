@@ -2108,6 +2108,7 @@ function renderPdf(view) {
       </div>
     </div>
     ${ready ? pdfPreview(resident, period) : `<div class="card"><h2>Vista previa</h2><p>La vista previa aparecera cuando seleccione residente y periodo.</p></div>`}
+    ${ready ? pdfAlertsPreview(resident, period) : ""}
     ${state.pdfGenerated ? generatedPdfSection() : ""}`;
   $("pdfResidente").value = String(resident.id);
   attachPdfControls();
@@ -2219,6 +2220,26 @@ function reportMedicationTable(rows, limit = null) {
   </div>`;
 }
 
+function reportAlertsTable(rows, limit = null) {
+  const alertas = Number(limit) ? rows.slice(0, limit) : rows;
+  return `<div class="report-section">
+    <h2>Alertas Del Período</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Fecha</th><th>Alerta</th><th>Valor</th><th>Nivel</th><th>Estado</th><th>Acción sugerida / cierre</th></tr></thead>
+        <tbody>${alertas.map((alerta) => `<tr>
+          <td>${alerta.fecha}</td>
+          <td>${alerta.variable}</td>
+          <td>${formatDecimalText(alerta.valor)}</td>
+          <td>${alerta.nivel}</td>
+          <td>${alerta.estado}</td>
+          <td>${alerta.comentario ? `<b>Cierre:</b> ${alerta.comentario}` : alerta.accion}</td>
+        </tr>`).join("") || `<tr><td colspan="6">Sin alertas registradas para este residente en el período.</td></tr>`}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
 function pdfPreview(resident, days) {
   const data = reportData(resident, days);
   return `<div class="card report-preview">
@@ -2243,6 +2264,13 @@ function pdfPreview(resident, days) {
   </div>`;
 }
 
+function pdfAlertsPreview(resident, days) {
+  const data = reportData(resident, days);
+  return `<div class="card report-alerts-preview">
+    ${reportAlertsTable(data.alertas, 8)}
+  </div>`;
+}
+
 function reportData(resident, days) {
   const today = new Date(2026, 5, 14, 23, 59);
   const start = daysBefore(today, days);
@@ -2257,6 +2285,7 @@ function reportData(resident, days) {
   const medicamentos = cam
     .filter((row) => row.tipo.toLowerCase().includes("medicamento"))
     .sort((a, b) => parseRegistroDate(b.fecha) - parseRegistroDate(a.fecha));
+  const alertas = reportAlertsForResident(resident, start, today);
   const entries = [
     ...camEjecutivo.map((registro) => ({
       fecha: registro.fecha,
@@ -2280,7 +2309,17 @@ function reportData(resident, days) {
       clase: "timeline-nutri"
     }))
   ].sort((a, b) => b.date - a.date);
-  return { cam, camEjecutivo, pro, nutri, controles, medicamentos, entries };
+  return { cam, camEjecutivo, pro, nutri, controles, medicamentos, alertas, entries };
+}
+
+function reportAlertsForResident(resident, start, end) {
+  return alertasExportables()
+    .filter((alerta) => alerta.residente === resident.nombre)
+    .filter((alerta) => {
+      const date = parseRegistroDate(alerta.fecha);
+      return date >= start && date <= end;
+    })
+    .sort((a, b) => parseRegistroDate(b.fecha) - parseRegistroDate(a.fecha));
 }
 
 function generatePdfReport(resident, days) {
@@ -2312,6 +2351,7 @@ function generatedPdfSection() {
       ${reportCharts(data.controles, days)}
       ${pesoMensualCard(resident)}
       ${reportMedicationTable(data.medicamentos)}
+      ${reportAlertsTable(data.alertas)}
     </div>
   </div>`;
 }
@@ -2386,6 +2426,11 @@ function reportEmailHtml(resident, days, data) {
       <table>
         <thead><tr><th>Fecha</th><th>Hora</th><th>Usuario</th><th>Responsable</th><th>Remedio</th></tr></thead>
         <tbody>${data.medicamentos.slice(0, 20).map((row) => `<tr><td>${escapeHtml(medicamentoDia(row))}</td><td>${escapeHtml(medicamentoHora(row))}</td><td>${escapeHtml(row.usuario || usuarioCamPorTurno(row.turno))}</td><td>${escapeHtml(row.cuidadora || row.rol || "-")}</td><td>${escapeHtml(row.medicamento || inferMedicamento(row.detalle || row.registro))}</td></tr>`).join("") || `<tr><td colspan="5">Sin medicamentos registrados.</td></tr>`}</tbody>
+      </table>
+      <h2>Alertas Del Período</h2>
+      <table>
+        <thead><tr><th>Fecha</th><th>Alerta</th><th>Valor</th><th>Nivel</th><th>Estado</th><th>Acción sugerida / cierre</th></tr></thead>
+        <tbody>${data.alertas.slice(0, 20).map((alerta) => `<tr><td>${escapeHtml(alerta.fecha)}</td><td>${escapeHtml(alerta.variable)}</td><td>${escapeHtml(formatDecimalText(alerta.valor))}</td><td>${escapeHtml(alerta.nivel)}</td><td>${escapeHtml(alerta.estado)}</td><td>${escapeHtml(alerta.comentario ? `Cierre: ${alerta.comentario}` : alerta.accion)}</td></tr>`).join("") || `<tr><td colspan="6">Sin alertas registradas en el período.</td></tr>`}</tbody>
       </table>
       <p>Prueba rapida: el producto final enviara este contenido como PDF adjunto.</p>
     </body>
