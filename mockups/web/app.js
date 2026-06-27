@@ -315,6 +315,36 @@ function formatDecimalText(value) {
   return String(value ?? "").replace(/(\d+)\.(\d+)/g, "$1,$2");
 }
 
+function parseDecimalValue(value) {
+  return Number(String(value || "").replace(",", "."));
+}
+
+function hasDecimalPoint(value) {
+  return /\d+\.\d+/.test(String(value || ""));
+}
+
+function bindDecimalCommaValidation(ids) {
+  ids.forEach((id) => {
+    const input = $(id);
+    if (!input) return;
+    input.setAttribute("inputmode", "decimal");
+    input.addEventListener("change", () => {
+      if (hasDecimalPoint(input.value)) {
+        openModal("Separador decimal", "El separador decimal es la coma. Ejemplo: 36,8.");
+      }
+    });
+  });
+}
+
+function validateDecimalCommaFields(fields) {
+  const invalid = fields.filter(({ id }) => {
+    const input = $(id);
+    return input && hasDecimalPoint(input.value);
+  });
+  if (!invalid.length) return "";
+  return `El separador decimal es la coma. Corrija: ${invalid.map((field) => field.label).join(", ")}.`;
+}
+
 function residentsTable(admin) {
   return `<div class="card">
     <h2>${admin ? "Tabla maestra" : "Listado de residentes activos"}</h2>
@@ -369,7 +399,7 @@ function renderResidentForm(resident) {
         <div><label>Edad</label><input id="resEdad" value="${resident?.edad || ""}"></div>
         <div><label>Sexo</label><select id="resSexo"><option ${resident?.sexo === "Femenino" ? "selected" : ""}>Femenino</option><option ${resident?.sexo === "Masculino" ? "selected" : ""}>Masculino</option></select></div>
         <div><label>Fecha ingreso</label><input id="resIngreso" type="date" value="${resident?.ingreso || ""}"></div>
-        <div><label>Peso inicial</label><input id="resPeso" value="${resident?.peso || ""}"></div>
+        <div><label>Peso inicial</label><input id="resPeso" value="${resident ? formatDecimalText(resident.peso) : ""}" placeholder="Ej: 56,6"></div>
         <div><label>Apoderado</label><input id="resApoderado" value="${resident?.apoderado || ""}"></div>
         <div><label>Mail apoderado</label><input id="resMail" type="email" value="${resident?.mail || ""}"></div>
         <div><label>Telefono apoderado</label><input id="resTelefono" value="${resident?.telefonoApoderado || ""}"></div>
@@ -384,12 +414,18 @@ function renderResidentForm(resident) {
         <button class="btn ghost" onclick="go('bdresidentes')">Cancelar</button>
       </div>
     </div>`;
+  bindDecimalCommaValidation(["resPeso"]);
 }
 
 function saveResidentDraft(id) {
   const nombre = $("resNombre").value.trim();
   if (!nombre) {
     openModal("Ficha residente", "Debe ingresar el nombre completo del residente.");
+    return;
+  }
+  const decimalError = validateDecimalCommaFields([{ id: "resPeso", label: "peso inicial" }]);
+  if (decimalError) {
+    openModal("Separador decimal", decimalError);
     return;
   }
   const payload = {
@@ -478,7 +514,7 @@ function renderFormularioCam(view) {
     <div id="secCiclos" class="form-section hidden">
       <h2>Control de ciclos</h2>
       <div class="grid3">
-        <div><label>Temperatura C</label><input id="camTemp" type="number" step="0.1" placeholder="36.8"></div>
+        <div><label>Temperatura C</label><input id="camTemp" placeholder="36,8"></div>
         <div><label>Saturacion %</label><input id="camSpo2" type="number" placeholder="96"></div>
         <div><label>Presion arterial mmHg</label><input id="camPa" placeholder="125/80"></div>
         <div><label>HGT / Glucosa mg/dL</label><input id="camHgt" type="number" placeholder="110"></div>
@@ -501,6 +537,7 @@ function renderFormularioCam(view) {
     <button class="btn primary" onclick="confirmCam()">Guardar registro</button>`;
   bindToggles();
   bindCamDateRules();
+  bindDecimalCommaValidation(["camTemp"]);
 }
 
 function toggle(id, label) {
@@ -603,6 +640,11 @@ function confirmCam() {
     openModal("Campos obligatorios", `Debe completar: ${faltantes.join(", ")}.`);
     return;
   }
+  const decimalError = validateDecimalCommaFields([{ id: "camTemp", label: "temperatura" }]);
+  if (decimalError) {
+    openModal("Separador decimal", decimalError);
+    return;
+  }
   const dateError = validateCamDateTime();
   if (dateError) {
     openModal("Fecha u hora no permitida", dateError);
@@ -689,7 +731,8 @@ function valueForHeader(row, header) {
     IMC: "imc",
     Observacion: "observacion"
   }[header];
-  return row[key] || "";
+  const value = row[key] || "";
+  return header === "IMC" ? formatDecimalText(value) : value;
 }
 
 function renderFormularioProfesional(rol) {
@@ -711,7 +754,7 @@ function renderFormularioProfesional(rol) {
       <h2>Toma de ciclos</h2>
       <div class="notice">Esta toma quedara asociada al residente seleccionado arriba y al usuario profesional que ingresa el registro.</div>
       <div class="grid3">
-        <div><label>Temperatura C</label><input id="proTemp" type="number" step="0.1" placeholder="36.8"></div>
+        <div><label>Temperatura C</label><input id="proTemp" placeholder="36,8"></div>
         <div><label>Saturacion %</label><input id="proSpo2" type="number" placeholder="96"></div>
         <div><label>Presion arterial mmHg</label><input id="proPa" placeholder="125/80"></div>
         <div><label>HGT / Glucosa mg/dL</label><input id="proHgt" type="number" placeholder="110"></div>
@@ -732,6 +775,7 @@ function renderFormularioProfesional(rol) {
   });
   bindProfessionalDateRules();
   bindProfessionalCycleToggle();
+  bindDecimalCommaValidation(["proTemp"]);
 }
 
 function confirmProfesional(rol) {
@@ -745,6 +789,11 @@ function confirmProfesional(rol) {
   }
   if (incluyeCiclos && !professionalCyclesValid()) {
     openModal("Toma de ciclos", "Debe completar temperatura, saturacion, presion arterial y HGT/Glucosa para guardar la toma de ciclos.");
+    return;
+  }
+  const decimalError = validateDecimalCommaFields([{ id: "proTemp", label: "temperatura" }]);
+  if (decimalError) {
+    openModal("Separador decimal", decimalError);
     return;
   }
   openModal(`Confirmar registro ${rol}`, `Esta seguro que desea agregar este registro al residente ${resident.nombre}?`, () => {
@@ -801,7 +850,7 @@ function professionalCycleRecord(resident, rol, fechaHora) {
   return {
     residente: resident.nombre,
     fecha: fechaHora,
-    temp: Number(Number($("proTemp").value).toFixed(1)),
+    temp: Number(parseDecimalValue($("proTemp").value).toFixed(1)),
     spo2: Number($("proSpo2").value),
     pad: pressure.diastolica,
     hgt: Number($("proHgt").value),
@@ -1284,8 +1333,8 @@ function renderFormularioNutri(view) {
         <div><label>Edad</label><input id="nutriEdad" readonly></div>
         <div><label>Peso inicial</label><input id="nutriPeso" readonly></div>
         <div><label>Sexo</label><input id="nutriSexo" readonly></div>
-        <div><label>Estatura</label><input id="nutriTalla" placeholder="Ej: 1.62"></div>
-        <div><label>IMC</label><input id="nutriImc" type="number" step="0.1"></div>
+        <div><label>Estatura</label><input id="nutriTalla" placeholder="Ej: 1,62"></div>
+        <div><label>IMC</label><input id="nutriImc" placeholder="Ej: 22,4"></div>
         <div><label>Clasificacion CC</label><input id="nutriCc"></div>
         <div><label>Clasificacion CB</label><input id="nutriCb"></div>
         <div><label>Clasificacion PT</label><input id="nutriPt"></div>
@@ -1297,13 +1346,14 @@ function renderFormularioNutri(view) {
     <button class="btn primary" onclick="confirmNutri()">Guardar registro</button>`;
   bindNutriResident();
   bindNutriDateRules();
+  bindDecimalCommaValidation(["nutriTalla", "nutriImc"]);
 }
 
 function bindNutriResident() {
   const update = () => {
     const r = RESIDENTES.find((resident) => resident.id === Number($("nutriResidente").value));
     $("nutriEdad").value = r.edad;
-    $("nutriPeso").value = r.peso;
+    $("nutriPeso").value = formatDecimalText(r.peso);
     $("nutriSexo").value = r.sexo;
   };
   $("nutriResidente").addEventListener("change", update);
@@ -1315,6 +1365,14 @@ function confirmNutri() {
   const dateError = validateNutriDate();
   if (dateError) {
     openModal("Fecha no permitida", dateError);
+    return;
+  }
+  const decimalError = validateDecimalCommaFields([
+    { id: "nutriTalla", label: "estatura" },
+    { id: "nutriImc", label: "IMC" }
+  ]);
+  if (decimalError) {
+    openModal("Separador decimal", decimalError);
     return;
   }
   openModal("Confirmar registro nutricional", `Esta seguro que desea agregar este registro nutricional al residente ${resident.nombre}?`, () => {
@@ -1907,25 +1965,37 @@ function currentTimeInput() {
 function renderRangos(view) {
   view.innerHTML = page("Rangos de alerta", "Configuracion de valores normales, alerta y criticos.") +
     `<div class="grid2">
-      ${rangoCard("Temperatura", "36.0", "37.5", "C")}
+      ${rangoCard("Temperatura", "36,0", "37,5", "C")}
       ${rangoCard("Saturacion", "95", "100", "%")}
       ${rangoCard("Presion diastolica", "60", "89", "mmHg")}
       ${rangoCard("HGT / Glucosa", "70", "180", "mg/dL")}
     </div>
-    <button class="btn primary" onclick="openModal('Rangos', 'Rangos actualizados en la maqueta.')">Guardar nuevos rangos</button>`;
+    <button class="btn primary" onclick="saveRangos()">Guardar nuevos rangos</button>`;
+  bindDecimalCommaValidation([...document.querySelectorAll(".rango-decimal")].map((input) => input.id));
 }
 
 function rangoCard(nombre, min, max, unidad) {
+  const key = normalizeSearch(nombre).replace(/\s+/g, "-").replace(/\//g, "-");
   return `<div class="form-section">
     <h2>${nombre}</h2>
     <div class="grid3">
-      <div><label>Normal inferior</label><input value="${min}"></div>
-      <div><label>Normal superior</label><input value="${max}"></div>
+      <div><label>Normal inferior</label><input id="rango-${key}-min" class="rango-decimal" value="${min}"></div>
+      <div><label>Normal superior</label><input id="rango-${key}-max" class="rango-decimal" value="${max}"></div>
       <div><label>Unidad</label><input value="${unidad}" readonly></div>
     </div>
     <label>Accion recomendada</label>
     <textarea>Informar a Enfermero y repetir medicion si corresponde.</textarea>
   </div>`;
+}
+
+function saveRangos() {
+  const fields = [...document.querySelectorAll(".rango-decimal")].map((input) => ({ id: input.id, label: input.closest(".form-section")?.querySelector("h2")?.textContent || "rango" }));
+  const decimalError = validateDecimalCommaFields(fields);
+  if (decimalError) {
+    openModal("Separador decimal", decimalError);
+    return;
+  }
+  openModal("Rangos", "Rangos actualizados en la maqueta.");
 }
 
 function renderUsuarios(view) {
