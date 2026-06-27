@@ -180,26 +180,11 @@ function renderAdminDashboard(view) {
       { value: "7", label: "Usuarios iniciales" },
       { value: "4", label: "Formularios operativos" }
     ]) +
-    `<div class="notice">Administrador mantiene acceso a los controles de ciclos y sus graficas, igual que en el prototipo original.</div>` +
     residentSearchPanel() +
     residentProfile(resident) +
-    bitacoraResidente(resident) +
-    renderGraficasCam(resident) +
-    `<div class="grid2">
-      <div class="card">
-        <h2>Accesos rapidos</h2>
-        <div class="toolbar">
-          <button class="btn primary" onclick="go('residentes')">Ver residentes</button>
-          <button class="btn secondary" onclick="go('alertas')">Revisar alertas</button>
-          <button class="btn secondary" onclick="go('rangos')">Editar rangos</button>
-        </div>
-      </div>
-      <div class="card">
-        <h2>Alertas del residente</h2>
-        ${residentAlerts(resident)}
-      </div>
-    </div>`;
+    dashboardTabs(resident);
   attachResidentSearch();
+  attachDashboardTabs();
 }
 
 function renderInicio(view) {
@@ -255,7 +240,7 @@ function renderBaseDatosResidentes(view) {
 
 function residentToolbar() {
   return `<div class="toolbar">
-    ${RESIDENTES.map((r) => `<button class="btn secondary resident-picker" data-id="${r.id}">${r.nombre}</button>`).join("")}
+    ${RESIDENTES.map((r) => `<button class="btn secondary resident-picker ${r.id === state.residentId ? "selected" : ""}" data-id="${r.id}">${r.nombre}</button>`).join("")}
   </div>`;
 }
 
@@ -465,6 +450,13 @@ function renderFormularioCam(view) {
         <div><label>Residente *</label>${residentSelect("camResidente")}</div>
       </div>
     </div>
+    <div class="form-section">
+      <h2>Diuresis / deposicion</h2>
+      <div class="grid3">
+        <div><label>Tipo</label><select id="camDespicheTipo"><option>Diuresis</option><option>Deposicion</option></select></div>
+        <div><label>Resultado</label><select id="camDespicheResultado"><option>Si</option><option>No</option></select></div>
+      </div>
+    </div>
     ${toggle("chkCiclos", "Registrar control de ciclos")}
     <div id="secCiclos" class="form-section hidden">
       <h2>Control de ciclos</h2>
@@ -473,13 +465,6 @@ function renderFormularioCam(view) {
         <div><label>Saturacion %</label><input id="camSpo2" type="number" placeholder="96"></div>
         <div><label>Presion arterial mmHg</label><input id="camPa" placeholder="125/80"></div>
         <div><label>HGT / Glucosa mg/dL</label><input id="camHgt" type="number" placeholder="110"></div>
-      </div>
-    </div>
-    <div class="form-section">
-      <h2>Diuresis / deposicion</h2>
-      <div class="grid3">
-        <div><label>Tipo</label><select id="camDespicheTipo"><option>Diuresis</option><option>Deposicion</option></select></div>
-        <div><label>Resultado</label><select id="camDespicheResultado"><option>Si</option><option>No</option></select></div>
       </div>
     </div>
     ${toggle("chkMed", "Administracion de medicamentos")}
@@ -529,17 +514,24 @@ function bindCamDateRules() {
       if (!fecha.value || fecha.value !== today) fecha.value = today;
       hora.min = "08:00";
       hora.max = "20:00";
-      if (!hora.value) hora.value = "08:00";
+      if (!hora.value || hora.value < "08:00" || hora.value > "20:00") hora.value = "08:00";
     } else {
       fecha.min = today;
       fecha.max = tomorrow;
       if (!fecha.value || fecha.value < today || fecha.value > tomorrow) fecha.value = today;
-      hora.removeAttribute("min");
-      hora.removeAttribute("max");
-      if (!hora.value) hora.value = "20:00";
+      if (fecha.value === today) {
+        hora.min = "20:00";
+        hora.max = "23:59";
+        if (!hora.value || hora.value < "20:00") hora.value = "20:00";
+      } else {
+        hora.min = "00:00";
+        hora.max = "08:00";
+        if (!hora.value || hora.value > "08:00") hora.value = "08:00";
+      }
     }
   };
   turno.addEventListener("change", apply);
+  fecha.addEventListener("change", apply);
   fecha.addEventListener("change", () => {
     const error = validateCamDateTime();
     if (error) openModal("Fecha u hora no permitida", error);
@@ -557,6 +549,7 @@ function validateCamDateTime() {
   const hora = $("camHora").value;
   const today = todayIso();
   const tomorrow = addDaysIso(new Date(), 1);
+  if (!fecha || !hora) return "Debe seleccionar fecha y hora.";
   if (turno === "Dia") {
     if (fecha !== today) return "El turno dia solo permite registrar controles del dia actual.";
     if (hora < "08:00" || hora > "20:00") return "El turno dia solo permite horarios entre 08:00 y 20:00.";
@@ -829,11 +822,19 @@ function renderDashboardResidente(view) {
   view.innerHTML = page("Dashboard residentes", "Consulta de ficha, evolucion, controles CAM, nutricion y alertas.") +
     residentSearchPanel() +
     residentProfile(r) +
-    `<div class="tabs">
-      ${["evolucion", "cam", "nutricion", "alertas"].map((tab) => `<button class="${state.dashboardTab === tab ? "active" : ""}" data-tab="${tab}">${tabLabel(tab)}</button>`).join("")}
-    </div>
-    <div id="dashTabContent">${dashboardTabContent(r)}</div>`;
+    dashboardTabs(r);
   attachResidentSearch();
+  attachDashboardTabs();
+}
+
+function dashboardTabs(resident) {
+  return `<div class="tabs">
+      ${["evolucion", "cam", "medicamentos", "nutricion", "alertas"].map((tab) => `<button class="${state.dashboardTab === tab ? "active" : ""}" data-tab="${tab}">${tabLabel(tab)}</button>`).join("")}
+    </div>
+    <div id="dashTabContent">${dashboardTabContent(resident)}</div>`;
+}
+
+function attachDashboardTabs() {
   document.querySelectorAll("[data-tab]").forEach((button) => {
     button.addEventListener("click", () => {
       state.dashboardTab = button.dataset.tab;
@@ -843,12 +844,15 @@ function renderDashboardResidente(view) {
 }
 
 function tabLabel(tab) {
-  return { evolucion: "Evolucion", cam: "Controles CAM", nutricion: "Nutricion", alertas: "Alertas" }[tab];
+  return { evolucion: "Evolucion", cam: "Controles CAM", medicamentos: "Medicamentos", nutricion: "Nutricion", alertas: "Alertas" }[tab];
 }
 
 function dashboardTabContent(r) {
   if (state.dashboardTab === "cam") {
     return renderGraficasCam(r) + controlesTable(r);
+  }
+  if (state.dashboardTab === "medicamentos") {
+    return medicamentosTable(r);
   }
   if (state.dashboardTab === "nutricion") {
     return pesoMensualCard(r) + `<div class="timeline"><b>Nutricion</b><p>Ultimo IMC registrado: 22.4. Mantener indicaciones.</p></div>`;
@@ -868,7 +872,6 @@ function renderGraficasCam(resident) {
       ${chartCard(UMBRALES_CICLOS.pad, data, "pad")}
       ${chartCard(UMBRALES_CICLOS.hgt, data, "hgt")}
     </div>
-    ${medicamentosTable(resident)}
     ${pesoMensualCard(resident)}`;
 }
 
