@@ -291,7 +291,7 @@ const ROLES = {
   },
   cam: {
     label: "CAM / Cuidadora",
-    user: "cam-dia@hogarantu.cl",
+    user: "cuidadoras@hogarantu.cl",
     menu: [
       ["inicio", "Inicio"],
       ["formularioCam", "Registro CAM"],
@@ -434,27 +434,39 @@ function cicloDetalle(residentIndex, dayOffset, hourIndex) {
   return `Temp ${temp} C, Sat ${spo2}%, PA ${sistolica}/${diastolica}, HGT ${hgt}.`;
 }
 
+function despicheSimulado(residentIndex, dayOffset, hourIndex) {
+  const tipo = (residentIndex + dayOffset + hourIndex) % 2 === 0 ? "Diuresis" : "Deposicion";
+  const casoAlerta = residentIndex === 2 && dayOffset === 29;
+  const resultado = casoAlerta || (residentIndex + dayOffset + hourIndex) % 11 === 0 ? "No" : "Si";
+  return { tipo, resultado };
+}
+
 let REGISTROS_CAM = RESIDENTES.flatMap((residente, residentIndex) =>
   CONTROL_DIAS.flatMap((dayOffset) =>
     CONTROL_HORAS.filter((_, hourIndex) => debeCrearControlCiclo(residentIndex, dayOffset, hourIndex)).map((hora, hourIndex) => {
       const esMedicamento = hourIndex !== 1 && (residentIndex + dayOffset + hourIndex) % 2 === 0;
       const esObservacion = (residentIndex + dayOffset + hourIndex) % 5 === 0;
       const medicamento = esMedicamento ? MEDICAMENTOS_SIMULADOS[(residentIndex + dayOffset + hourIndex) % MEDICAMENTOS_SIMULADOS.length] : "";
+      const despiche = despicheSimulado(residentIndex, dayOffset, hourIndex);
       const parts = ["Control de ciclos"];
+      parts.push("Despiche");
       if (esMedicamento) parts.push("Medicamento");
       if (esObservacion) parts.push("Observacion");
       const detalle = [
         `Control registrado. ${cicloDetalle(residentIndex, dayOffset, hourIndex)}`,
+        `${despiche.tipo}: ${despiche.resultado}.`,
         esMedicamento ? `Medicamento ${medicamento} administrado a las ${hora}.` : "",
         esObservacion ? "Observacion: residente con evolucion diaria sin incidentes mayores." : ""
       ].filter(Boolean).join(" ");
       return {
         fecha: fechaSimulada(dayOffset, hora),
         residente: residente.nombre,
-        usuario: hourIndex === 2 ? "cam-noche@hogarantu.cl" : "cam-dia@hogarantu.cl",
+        usuario: "cuidadoras@hogarantu.cl",
         turno: hourIndex === 2 ? "Noche" : "Dia",
         cuidadora: hourIndex === 2 ? "CAM2" : "CAM1",
         tipo: parts.join(" + "),
+        despicheTipo: despiche.tipo,
+        despicheResultado: despiche.resultado,
         medicamento,
         horaMedicamento: esMedicamento ? hora : "",
         detalle,

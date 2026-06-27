@@ -24,8 +24,7 @@ const DEMO_PASSWORD = "antu2026";
 const DEMO_USERS = [
   { email: "administracion@hogarantu.cl", role: "administrador" },
   { email: "administracion_respaldo@hogarantu.cl", role: "administrador_respaldo" },
-  { email: "cam-dia@hogarantu.cl", role: "cam" },
-  { email: "cam-noche@hogarantu.cl", role: "cam" },
+  { email: "cuidadoras@hogarantu.cl", role: "cam" },
   { email: "dt@hogarantu.cl", role: "directora" },
   { email: "enfermero@hogarantu.cl", role: "enfermero" },
   { email: "nutricion@hogarantu.cl", role: "nutricionista" }
@@ -178,7 +177,7 @@ function renderAdminDashboard(view) {
     metrics([
       { value: `${RESIDENTES.length}/18`, label: "Residentes activos" },
       { value: alertasAbiertas().length, label: "Alertas abiertas" },
-      { value: "8", label: "Usuarios iniciales" },
+      { value: "7", label: "Usuarios iniciales" },
       { value: "4", label: "Formularios operativos" }
     ]) +
     `<div class="notice">Administrador mantiene acceso a los controles de ciclos y sus graficas, igual que en el prototipo original.</div>` +
@@ -458,7 +457,7 @@ function renderFormularioCam(view) {
     <div class="form-section">
       <h2>Datos base</h2>
       <div class="grid3">
-        <div><label>Usuario de acceso</label><select><option>cam-dia@hogarantu.cl</option><option>cam-noche@hogarantu.cl</option></select></div>
+        <div><label>Usuario de acceso</label><input value="cuidadoras@hogarantu.cl" readonly></div>
         <div><label>Nombre y apellido cuidadora *</label><input id="camCuidadora" required placeholder="Ej: Maria Gonzalez Soto"></div>
         <div><label>Turno</label><select id="camTurno"><option>Dia</option><option>Noche</option></select></div>
         <div><label>Fecha *</label><input id="camFecha" required type="date"></div>
@@ -466,14 +465,21 @@ function renderFormularioCam(view) {
         <div><label>Residente *</label>${residentSelect("camResidente")}</div>
       </div>
     </div>
-    ${toggle("chkCiclos", "Registrar control de ciclos")}
-    <div id="secCiclos" class="form-section hidden">
+    <label class="toggle-row"><input type="checkbox" id="chkCiclos" checked disabled> Registrar control de ciclos obligatorio</label>
+    <div id="secCiclos" class="form-section">
       <h2>Control de ciclos</h2>
       <div class="grid3">
         <div><label>Temperatura C</label><input id="camTemp" type="number" step="0.1" placeholder="36.8"></div>
         <div><label>Saturacion %</label><input id="camSpo2" type="number" placeholder="96"></div>
         <div><label>Presion arterial mmHg</label><input id="camPa" placeholder="125/80"></div>
-        <div><label>HGT / Glucosa mg/dL</label><input id="camHgt" type="number" placeholder="Opcional"></div>
+        <div><label>HGT / Glucosa mg/dL</label><input id="camHgt" type="number" placeholder="110"></div>
+      </div>
+    </div>
+    <div class="form-section">
+      <h2>Diuresis / deposicion</h2>
+      <div class="grid3">
+        <div><label>Tipo</label><select id="camDespicheTipo"><option>Diuresis</option><option>Deposicion</option></select></div>
+        <div><label>Resultado</label><select id="camDespicheResultado"><option>Si</option><option>No</option></select></div>
       </div>
     </div>
     ${toggle("chkMed", "Administracion de medicamentos")}
@@ -492,6 +498,7 @@ function renderFormularioCam(view) {
     </div>
     <button class="btn primary" onclick="confirmCam()">Guardar registro</button>`;
   bindToggles();
+  bindCamDateRules();
 }
 
 function toggle(id, label) {
@@ -503,9 +510,63 @@ function bindToggles() {
     const checkbox = $(chk);
     const section = $(sec);
     if (checkbox && section) {
+      if (checkbox.disabled) return;
       checkbox.addEventListener("change", () => section.classList.toggle("hidden", !checkbox.checked));
     }
   });
+}
+
+function bindCamDateRules() {
+  const turno = $("camTurno");
+  const fecha = $("camFecha");
+  const hora = $("camHora");
+  if (!turno || !fecha || !hora) return;
+  const apply = () => {
+    const today = todayIso();
+    const tomorrow = addDaysIso(new Date(), 1);
+    if (turno.value === "Dia") {
+      fecha.min = today;
+      fecha.max = today;
+      if (!fecha.value || fecha.value !== today) fecha.value = today;
+      hora.min = "08:00";
+      hora.max = "20:00";
+      if (!hora.value) hora.value = "08:00";
+    } else {
+      fecha.min = today;
+      fecha.max = tomorrow;
+      if (!fecha.value || fecha.value < today || fecha.value > tomorrow) fecha.value = today;
+      hora.removeAttribute("min");
+      hora.removeAttribute("max");
+      if (!hora.value) hora.value = "20:00";
+    }
+  };
+  turno.addEventListener("change", apply);
+  fecha.addEventListener("change", () => {
+    const error = validateCamDateTime();
+    if (error) openModal("Fecha u hora no permitida", error);
+  });
+  hora.addEventListener("change", () => {
+    const error = validateCamDateTime();
+    if (error) openModal("Fecha u hora no permitida", error);
+  });
+  apply();
+}
+
+function validateCamDateTime() {
+  const turno = $("camTurno").value;
+  const fecha = $("camFecha").value;
+  const hora = $("camHora").value;
+  const today = todayIso();
+  const tomorrow = addDaysIso(new Date(), 1);
+  if (turno === "Dia") {
+    if (fecha !== today) return "El turno dia solo permite registrar controles del dia actual.";
+    if (hora < "08:00" || hora > "20:00") return "El turno dia solo permite horarios entre 08:00 y 20:00.";
+    return "";
+  }
+  if (fecha !== today && fecha !== tomorrow) return "El turno noche solo permite seleccionar hoy o manana.";
+  if (fecha === today && hora < "20:00") return "Para turno noche con fecha de hoy, el horario debe ser desde las 20:00.";
+  if (fecha === tomorrow && hora > "08:00") return "Para turno noche con fecha de manana, el horario debe ser hasta las 08:00.";
+  return "";
 }
 
 function residentSelect(id) {
@@ -518,8 +579,18 @@ function confirmCam() {
   if (!$("camFecha").value) faltantes.push("fecha");
   if (!$("camHora").value) faltantes.push("hora");
   if (!$("camResidente").value) faltantes.push("residente");
+  if (!$("chkCiclos").checked) faltantes.push("control de ciclos");
+  if (!$("camTemp").value) faltantes.push("temperatura");
+  if (!$("camSpo2").value) faltantes.push("saturacion");
+  if (!$("camPa").value) faltantes.push("presion arterial");
+  if (!$("camHgt").value) faltantes.push("HGT / glucosa");
   if (faltantes.length) {
     openModal("Campos obligatorios", `Debe completar: ${faltantes.join(", ")}.`);
+    return;
+  }
+  const dateError = validateCamDateTime();
+  if (dateError) {
+    openModal("Fecha u hora no permitida", dateError);
     return;
   }
   const resident = RESIDENTES.find((r) => r.id === Number($("camResidente").value));
@@ -527,10 +598,12 @@ function confirmCam() {
     REGISTROS_CAM.unshift({
       fecha: `${$("camFecha").value} ${$("camHora").value}`,
       residente: resident.nombre,
-      usuario: $("camTurno").value === "Noche" ? "cam-noche@hogarantu.cl" : "cam-dia@hogarantu.cl",
+      usuario: "cuidadoras@hogarantu.cl",
       turno: $("camTurno").value,
       cuidadora: $("camCuidadora").value.trim(),
       tipo: camTipo(),
+      despicheTipo: $("camDespicheTipo").value,
+      despicheResultado: $("camDespicheResultado").value,
       medicamento: $("chkMed").checked ? ($("camMed").value || "Medicamento sin nombre") : "",
       horaMedicamento: $("chkMed").checked ? ($("camHoraMed").value || "") : "",
       detalle: camDetalle(),
@@ -544,6 +617,7 @@ function confirmCam() {
 function camTipo() {
   const parts = [];
   if ($("chkCiclos").checked) parts.push("Control de ciclos");
+  parts.push("Despiche");
   if ($("chkMed").checked) parts.push("Medicamento");
   if ($("chkObs").checked) parts.push("Observacion");
   return parts.length ? parts.join(" + ") : "Registro CAM";
@@ -552,6 +626,7 @@ function camTipo() {
 function camDetalle() {
   const parts = [];
   if ($("chkCiclos").checked) parts.push(`Temp ${$("camTemp").value || "-"} C, Sat ${$("camSpo2").value || "-"}%, PA ${$("camPa").value || "-"}, HGT ${$("camHgt").value || "-"}.`);
+  parts.push(`${$("camDespicheTipo").value}: ${$("camDespicheResultado").value}.`);
   if ($("chkMed").checked) parts.push(`Medicamento ${$("camMed").value || "sin nombre"} a las ${$("camHoraMed").value || "--:--"}.`);
   if ($("chkObs").checked) parts.push($("camObs").value || "Sin detalle de observacion.");
   return parts.join(" ");
@@ -633,6 +708,7 @@ function renderFormularioProfesional(rol) {
     const resident = RESIDENTES.find((r) => r.id === Number($("proResidente").value));
     $("proFicha").innerHTML = residentProfile(resident);
   });
+  bindProfessionalDateRules();
   bindProfessionalCycleToggle();
 }
 
@@ -640,6 +716,11 @@ function confirmProfesional(rol) {
   const resident = RESIDENTES.find((r) => r.id === Number($("proResidente").value));
   const fechaHora = `${$("proFecha").value || "2026-06-14"} ${$("proHora").value || "10:00"}`;
   const incluyeCiclos = $("chkProCiclos").checked;
+  const dateError = validateProfessionalDate();
+  if (dateError) {
+    openModal("Fecha no permitida", dateError);
+    return;
+  }
   if (incluyeCiclos && !professionalCyclesValid()) {
     openModal("Toma de ciclos", "Debe completar temperatura, saturacion, presion arterial y HGT/Glucosa para guardar la toma de ciclos.");
     return;
@@ -666,6 +747,25 @@ function bindProfessionalCycleToggle() {
   const section = $("secProCiclos");
   if (!checkbox || !section) return;
   checkbox.addEventListener("change", () => section.classList.toggle("hidden", !checkbox.checked));
+}
+
+function bindProfessionalDateRules() {
+  const fecha = $("proFecha");
+  const hora = $("proHora");
+  if (!fecha) return;
+  fecha.min = addDaysIso(new Date(), -7);
+  fecha.max = todayIso();
+  if (!fecha.value) fecha.value = todayIso();
+  if (hora && !hora.value) hora.value = currentTimeInput();
+}
+
+function validateProfessionalDate() {
+  const value = $("proFecha").value;
+  const min = addDaysIso(new Date(), -7);
+  const max = todayIso();
+  if (!value) return "Debe seleccionar una fecha.";
+  if (value < min || value > max) return "Directora Tecnica y Enfermero solo pueden registrar desde hoy hasta 7 dias hacia atras, nunca fechas futuras.";
+  return "";
 }
 
 function professionalCyclesValid() {
@@ -960,7 +1060,7 @@ function medicamentosTable(resident) {
 }
 
 function usuarioCamPorTurno(turno) {
-  return turno === "Noche" ? "cam-noche@hogarantu.cl" : "cam-dia@hogarantu.cl";
+  return "cuidadoras@hogarantu.cl";
 }
 
 function medicamentoFecha(row) {
@@ -1075,6 +1175,7 @@ function renderFormularioNutri(view) {
     </div>
     <button class="btn primary" onclick="confirmNutri()">Guardar registro</button>`;
   bindNutriResident();
+  bindNutriDateRules();
 }
 
 function bindNutriResident() {
@@ -1090,6 +1191,11 @@ function bindNutriResident() {
 
 function confirmNutri() {
   const resident = RESIDENTES.find((r) => r.id === Number($("nutriResidente").value));
+  const dateError = validateNutriDate();
+  if (dateError) {
+    openModal("Fecha no permitida", dateError);
+    return;
+  }
   openModal("Confirmar registro nutricional", `Esta seguro que desea agregar este registro nutricional al residente ${resident.nombre}?`, () => {
     REGISTROS_NUTRI.unshift({
       fecha: `${$("nutriFecha").value || "2026-06-14"} ${$("nutriHora").value || "12:00"}`,
@@ -1101,6 +1207,25 @@ function confirmNutri() {
     state.view = "misRegistrosNutri";
     renderShell();
   });
+}
+
+function bindNutriDateRules() {
+  const fecha = $("nutriFecha");
+  const hora = $("nutriHora");
+  if (!fecha) return;
+  fecha.min = addDaysIso(new Date(), -7);
+  fecha.max = todayIso();
+  if (!fecha.value) fecha.value = todayIso();
+  if (hora && !hora.value) hora.value = currentTimeInput();
+}
+
+function validateNutriDate() {
+  const value = $("nutriFecha").value;
+  const min = addDaysIso(new Date(), -7);
+  const max = todayIso();
+  if (!value) return "Debe seleccionar una fecha.";
+  if (value < min || value > max) return "Nutricionista solo puede registrar desde hoy hasta 7 dias hacia atras, nunca fechas futuras.";
+  return "";
 }
 
 function renderMisRegistrosNutri(view) {
@@ -1222,7 +1347,7 @@ function renderAlertas(view) {
 }
 
 function todasLasAlertas() {
-  return [...ALERTAS, ...alertasCiclosInsuficientes()];
+  return [...ALERTAS, ...alertasCiclosInsuficientes(), ...alertasDespicheConsecutivo()];
 }
 
 function alertasAbiertas() {
@@ -1441,11 +1566,56 @@ function alertasCiclosInsuficientes() {
   return alertas;
 }
 
+function alertasDespicheConsecutivo() {
+  const alertas = [];
+  RESIDENTES.forEach((resident) => {
+    const registros = REGISTROS_CAM
+      .filter((registro) => registro.residente === resident.nombre)
+      .filter((registro) => registro.despicheResultado)
+      .sort((a, b) => parseRegistroDate(a.fecha) - parseRegistroDate(b.fecha));
+    let streak = 0;
+    registros.forEach((registro) => {
+      if (String(registro.despicheResultado || "").toLowerCase() === "no") {
+        streak += 1;
+      } else {
+        streak = 0;
+      }
+      if (streak === 3) {
+        alertas.push({
+          fecha: registro.fecha,
+          residente: resident.nombre,
+          variable: "Residente sin Despiche en 3 Ciclos Seguidos",
+          valor: "3 registros consecutivos con No",
+          nivel: "Alerta",
+          color: "yellow",
+          accion: "Evaluar hidratacion, eliminacion y avisar a Enfermero o Directora Tecnica para seguimiento."
+        });
+      }
+    });
+  });
+  return alertas;
+}
+
 function isoDate(date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function todayIso() {
+  return isoDate(new Date());
+}
+
+function addDaysIso(date, days) {
+  const copy = new Date(date);
+  copy.setDate(copy.getDate() + days);
+  return isoDate(copy);
+}
+
+function currentTimeInput() {
+  const now = new Date();
+  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 }
 
 function renderRangos(view) {
