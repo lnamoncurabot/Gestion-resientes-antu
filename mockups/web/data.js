@@ -435,7 +435,7 @@ function cicloDetalle(residentIndex, dayOffset, hourIndex) {
 }
 
 function despicheSimulado(residentIndex, dayOffset, hourIndex) {
-  const tipo = (residentIndex + dayOffset + hourIndex) % 2 === 0 ? "Diuresis" : "Deposicion";
+  const tipo = (residentIndex + dayOffset + hourIndex) % 2 === 0 ? "Diuresis" : "Deposición";
   const casoAlerta = residentIndex === 2 && dayOffset === 29;
   const resultado = casoAlerta || (residentIndex + dayOffset + hourIndex) % 11 === 0 ? "No" : "Si";
   return { tipo, resultado };

@@ -1,4 +1,4 @@
-const state = {
+﻿const state = {
   isAuthenticated: false,
   loggedUser: null,
   role: "administrador",
@@ -459,9 +459,9 @@ function renderFormularioCam(view) {
       </div>
     </div>
     <div class="form-section">
-      <h2>Diuresis / deposicion</h2>
+      <h2>Diuresis / Deposición</h2>
       <div class="grid3">
-        <div><label>Tipo</label><select id="camDespicheTipo"><option>Diuresis</option><option>Deposicion</option></select></div>
+        <div><label>Tipo</label><select id="camDespicheTipo"><option>Diuresis</option><option>Deposición</option></select></div>
         <div><label>Resultado</label><select id="camDespicheResultado"><option>Si</option><option>No</option></select></div>
       </div>
     </div>
@@ -710,9 +710,9 @@ function renderFormularioProfesional(rol) {
       </div>
     </div>
     <div class="form-section">
-      <h2>Diuresis / deposicion</h2>
+      <h2>Diuresis / Deposición</h2>
       <div class="grid3">
-        <div><label>Tipo</label><select id="proDespicheTipo"><option>Diuresis</option><option>Deposicion</option></select></div>
+        <div><label>Tipo</label><select id="proDespicheTipo"><option>Diuresis</option><option>Deposición</option></select></div>
         <div><label>Resultado</label><select id="proDespicheResultado"><option>Si</option><option>No</option></select></div>
       </div>
     </div>
@@ -936,13 +936,15 @@ function chartCard(config, data, key) {
 }
 
 function reportCharts(controles, days) {
-  return `<h3>Graficas control de ciclos - ultimos ${days} dias</h3>
+  return `<div class="report-section">
+    <h2>Gráficas De Control De Ciclos</h2>
     <div class="chart-grid">
       ${chartCardReport(UMBRALES_CICLOS.spo2, controles, "spo2")}
       ${chartCardReport(UMBRALES_CICLOS.pad, controles, "pad")}
       ${chartCardReport(UMBRALES_CICLOS.hgt, controles, "hgt")}
       ${chartCardReport(UMBRALES_CICLOS.temp, controles, "temp")}
-    </div>`;
+    </div>
+  </div>`;
 }
 
 function chartCardReport(config, data, key) {
@@ -1001,7 +1003,7 @@ function pesoMensualCard(resident) {
   const pesos = CONTROLES_PESO.filter((row) => row.residente === resident.nombre);
   const ultimo = pesos[pesos.length - 1];
   return `<div class="card table-wrap">
-    <h2>Peso mensual y regimen</h2>
+    <h2>Control De Peso</h2>
     <div class="notice">El peso no forma parte de los 3 ciclos diarios. Se registra al ingreso y luego como control mensual junto a indicaciones de minuta o regimen.</div>
     ${pesoChart(pesos)}
     <table>
@@ -1079,7 +1081,7 @@ function medicamentosTable(resident) {
     .filter((registro) => parseRegistroDate(registro.fecha) >= camLimit)
     .sort((a, b) => parseRegistroDate(b.fecha) - parseRegistroDate(a.fecha));
   return `<div class="card table-wrap">
-    <h2>Control de medicamentos ultimos 5 dias</h2>
+    <h2>Control De Medicamentos Ultimos 5 Dias</h2>
     <table>
       <thead><tr><th>Fecha</th><th>Remedio</th><th>Usuario</th><th>Cuidadora</th><th>Detalle</th></tr></thead>
       <tbody>
@@ -1499,9 +1501,9 @@ function editDespicheFields(row) {
   const tipo = row.despicheTipo || inferDespicheTipo(row.detalle || row.registro || "");
   const resultado = row.despicheResultado || inferDespicheResultado(row.detalle || row.registro || "");
   return `<div class="grid3">
-    <div><label>Tipo diuresis/deposicion</label><select id="editDespicheTipo">
+    <div><label>Tipo diuresis/deposición</label><select id="editDespicheTipo">
       <option ${tipo === "Diuresis" ? "selected" : ""}>Diuresis</option>
-      <option ${tipo === "Deposicion" ? "selected" : ""}>Deposicion</option>
+      <option ${tipo === "Deposición" ? "selected" : ""}>Deposición</option>
     </select></div>
     <div><label>Resultado</label><select id="editDespicheResultado">
       <option ${resultado === "Si" ? "selected" : ""}>Si</option>
@@ -1511,11 +1513,11 @@ function editDespicheFields(row) {
 }
 
 function inferDespicheTipo(text) {
-  return String(text || "").toLowerCase().includes("deposicion") ? "Deposicion" : "Diuresis";
+  return /deposici[oó]n/i.test(String(text || "")) ? "Deposición" : "Diuresis";
 }
 
 function inferDespicheResultado(text) {
-  const match = String(text || "").match(/(?:Diuresis|Deposicion):\s*(Si|No)/i);
+  const match = String(text || "").match(/(?:Diuresis|Deposici[oó]n):\s*(Si|No)/i);
   return match ? normalizeSiNo(match[1]) : "Si";
 }
 
@@ -1564,8 +1566,8 @@ function saveRecordEdit(source, index) {
 function applyDespicheToText(text, tipo, resultado) {
   const detail = String(text || "").trim();
   const replacement = `${tipo}: ${resultado}.`;
-  if (/(Diuresis|Deposicion):\s*(Si|No)\.?/i.test(detail)) {
-    return detail.replace(/(Diuresis|Deposicion):\s*(Si|No)\.?/i, replacement);
+  if (/(Diuresis|Deposici[oó]n):\s*(Si|No)\.?/i.test(detail)) {
+    return detail.replace(/(Diuresis|Deposici[oó]n):\s*(Si|No)\.?/i, replacement);
   }
   return `${detail}${detail ? " " : ""}${replacement}`;
 }
@@ -2069,7 +2071,8 @@ function isValidEmail(value) {
 }
 
 function reportPersonalData(resident) {
-  return `<h3>Datos personales</h3>
+  return `<div class="report-section report-personal-section">
+    <h2>Datos Personales</h2>
     <div class="grid3 report-personal-data">
       ${field("Nombre", resident.nombre)}
       ${field("RUT", resident.rut)}
@@ -2083,12 +2086,12 @@ function reportPersonalData(resident) {
       ${field("Telefono apoderado", resident.telefonoApoderado)}
       ${field("Contacto SOS", resident.contactoSos)}
       ${field("Servicio urgencia", resident.urgencia)}
-    </div>`;
+    </div>
+  </div>`;
 }
 
 function reportBrandHeader() {
   return `<div class="report-brand">
-    <div></div>
     <div class="report-brand-mark">
       <img src="./assets/antu-logo.png" alt="Hogar Antu">
       <span>www.hogarantu.cl</span>
@@ -2099,17 +2102,20 @@ function reportBrandHeader() {
 function reportBitacoraLastFive(resident, limit = null) {
   const data = reportData(resident, Number(state.pdfPeriodDays || state.pdfGeneratedDays || 15));
   const entries = Number(limit) ? data.entries.slice(0, limit) : data.entries;
-  return `<h3>Bitacora ejecutiva del periodo</h3>
+  return `<div class="report-section">
+    <h2>Bitácora Ejecutiva Del Período</h2>
     <div class="notice">Incluye registros DT, Enfermero y Nutricionista. De cuidadoras solo considera medicamentos o registros asociados a alertas.</div>
     ${entries.map((entry) => `<div class="timeline ${entry.clase}">
       <b>${entry.fecha} | ${entry.tipo}</b>
       <p>${entry.detalle}</p>
-    </div>`).join("") || `<div class="notice">Sin registros ejecutivos en el periodo.</div>`}`;
+    </div>`).join("") || `<div class="notice">Sin registros ejecutivos en el período.</div>`}
+  </div>`;
 }
 
 function reportMedicationTable(rows, limit = null) {
   const medicamentos = Number(limit) ? rows.slice(0, limit) : rows;
-  return `<h3>Control de medicamentos</h3>
+  return `<div class="report-section">
+    <h2>Control De Medicamentos</h2>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Fecha</th><th>Remedio</th><th>Usuario</th><th>Cuidadora</th><th>Detalle</th></tr></thead>
@@ -2121,14 +2127,15 @@ function reportMedicationTable(rows, limit = null) {
           <td>${row.detalle}</td>
         </tr>`).join("") || `<tr><td colspan="5">Sin medicamentos registrados en el periodo.</td></tr>`}</tbody>
       </table>
-    </div>`;
+    </div>
+  </div>`;
 }
 
 function pdfPreview(resident, days) {
   const data = reportData(resident, days);
   return `<div class="card report-preview">
     ${reportBrandHeader()}
-    <h2>Vista previa reporte</h2>
+    <h2>Vista Previa Reporte</h2>
     <div class="grid3">
       ${field("Residente", resident.nombre)}
       ${field("Periodo", `Ultimos ${days} dias`)}
@@ -2143,7 +2150,6 @@ function pdfPreview(resident, days) {
     ${reportPersonalData(resident)}
     ${reportBitacoraLastFive(resident, 10)}
     ${reportCharts(data.controles, days)}
-    <h3>Peso mensual</h3>
     ${pesoMensualCard(resident)}
     ${reportMedicationTable(data.medicamentos, 8)}
   </div>`;
@@ -2211,13 +2217,11 @@ function generatedPdfSection() {
     </div>
     <div class="print-report">
       ${reportBrandHeader()}
-      <h1>Reporte residente</h1>
-      <p class="report-meta">${resident.nombre} | Ultimos ${days} dias | Emision 2026-06-17</p>
+      <h1>Reporte Residente</h1>
+      <p class="report-meta">Ultimos ${days} dias | Emision 2026-06-17</p>
       ${reportPersonalData(resident)}
       ${reportBitacoraLastFive(resident)}
-      <h2>Graficas de control de ciclos</h2>
       ${reportCharts(data.controles, days)}
-      <h2>Peso mensual</h2>
       ${pesoMensualCard(resident)}
       ${reportMedicationTable(data.medicamentos)}
     </div>
@@ -2272,25 +2276,25 @@ function reportEmailHtml(resident, days, data) {
       </style>
     </head>
     <body>
-      <h1>Reporte residente - Hogar Antu</h1>
-      <p><b>Residente:</b> ${escapeHtml(resident.nombre)}<br><b>Periodo solicitado:</b> ultimos ${days} dias<br><b>Emision:</b> 2026-06-17</p>
-      <h2>Datos personales</h2>
+      <h1>Reporte Residente - Hogar Antu</h1>
+      <p><b>Período solicitado:</b> últimos ${days} días<br><b>Emisión:</b> 2026-06-17</p>
+      <h2>Datos Personales</h2>
       <table>
         <tr><th>RUT</th><td>${escapeHtml(resident.rut)}</td><th>Edad</th><td>${escapeHtml(resident.edad)}</td></tr>
         <tr><th>Sexo</th><td>${escapeHtml(resident.sexo)}</td><th>Ingreso</th><td>${escapeHtml(resident.ingreso)}</td></tr>
         <tr><th>Apoderado</th><td>${escapeHtml(resident.apoderado)}</td><th>Mail</th><td>${escapeHtml(resident.mail)}</td></tr>
         <tr><th>Patologias</th><td colspan="3">${escapeHtml(resident.patologias)}</td></tr>
       </table>
-      <h2>Bitacora ejecutiva del periodo</h2>
-      ${data.entries.slice(0, 12).map((entry) => `<div class="item"><b>${escapeHtml(entry.fecha)} | ${escapeHtml(entry.tipo)}</b><br>${entry.detalle}</div>`).join("") || "<p>Sin registros ejecutivos en el periodo.</p>"}
-      <h2>Resumen del periodo</h2>
+      <h2>Bitácora Ejecutiva Del Período</h2>
+      ${data.entries.slice(0, 12).map((entry) => `<div class="item"><b>${escapeHtml(entry.fecha)} | ${escapeHtml(entry.tipo)}</b><br>${entry.detalle}</div>`).join("") || "<p>Sin registros ejecutivos en el período.</p>"}
+      <h2>Resumen Del Período</h2>
       <table>
         <tr><th>Registros CAM</th><td>${data.cam.length}</td></tr>
         <tr><th>Registros DT/Enfermero</th><td>${data.pro.length}</td></tr>
-        <tr><th>Registros nutricion</th><td>${data.nutri.length}</td></tr>
+        <tr><th>Registros Nutrición</th><td>${data.nutri.length}</td></tr>
         <tr><th>Medicamentos</th><td>${data.medicamentos.length}</td></tr>
       </table>
-      <h2>Control de medicamentos</h2>
+      <h2>Control De Medicamentos</h2>
       <table>
         <thead><tr><th>Fecha</th><th>Remedio</th><th>Usuario</th><th>Cuidadora</th></tr></thead>
         <tbody>${data.medicamentos.slice(0, 20).map((row) => `<tr><td>${escapeHtml(medicamentoFecha(row))}</td><td>${escapeHtml(row.medicamento || inferMedicamento(row.detalle))}</td><td>${escapeHtml(row.usuario || usuarioCamPorTurno(row.turno))}</td><td>${escapeHtml(row.cuidadora)}</td></tr>`).join("") || `<tr><td colspan="4">Sin medicamentos registrados.</td></tr>`}</tbody>
@@ -2497,3 +2501,4 @@ function closeModal() {
 }
 
 init();
+

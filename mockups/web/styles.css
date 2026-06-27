@@ -603,9 +603,26 @@ th {
   background: var(--red);
 }
 
-.generated-report h1 {
+.generated-report h1,
+.print-report h1,
+.print-report h2,
+.report-preview h2,
+.report-section h2 {
   color: var(--teal-dark);
+  font-weight: 800;
+}
+
+.generated-report h1,
+.print-report h1 {
   margin: 0 0 4px;
+  font-size: 30px;
+}
+
+.print-report h2,
+.report-preview h2,
+.report-section h2 {
+  margin: 22px 0 12px;
+  font-size: 24px;
 }
 
 .report-meta {
@@ -623,14 +640,15 @@ th {
 
 .report-brand {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 10px;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 22px;
 }
 
 .report-brand-mark {
   display: grid;
-  justify-items: end;
+  justify-items: center;
   gap: 4px;
   color: var(--teal-dark);
   font-weight: 800;
@@ -638,9 +656,18 @@ th {
 }
 
 .report-brand-mark img {
-  width: 150px;
-  max-width: 35vw;
+  width: 170px;
+  max-width: 50vw;
   height: auto;
+}
+
+.report-section {
+  margin-top: 22px;
+}
+
+.report-personal-section {
+  margin-bottom: 28px;
+  padding-bottom: 8px;
 }
 
 .modal-backdrop {
@@ -753,6 +780,11 @@ th {
 }
 
 @media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+
   body * {
     visibility: hidden;
   }
@@ -765,9 +797,14 @@ th {
   #generatedPdfReport {
     position: absolute;
     inset: 0;
-    width: 100%;
+    width: auto;
     border: 0;
     box-shadow: none;
+    padding: 0;
+  }
+
+  .print-report {
+    width: 100%;
   }
 
   .no-print {
