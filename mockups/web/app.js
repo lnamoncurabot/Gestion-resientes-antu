@@ -16,6 +16,10 @@ const state = {
   closedAlerts: [],
   alertExportFrom: "2026-06-01",
   alertExportTo: "2026-06-15",
+  registrosPage: 1,
+  registrosExportMode: "all",
+  registrosExportFrom: "2026-06-01",
+  registrosExportTo: "2026-06-15",
   editReturnView: "registros"
 };
 
@@ -113,6 +117,10 @@ function resetSessionState() {
   state.closedAlerts = [];
   state.alertExportFrom = "2026-06-01";
   state.alertExportTo = "2026-06-15";
+  state.registrosPage = 1;
+  state.registrosExportMode = "all";
+  state.registrosExportFrom = "2026-06-01";
+  state.registrosExportTo = "2026-06-15";
   state.editReturnView = "registros";
 }
 
@@ -1164,16 +1172,20 @@ function camRegistroTieneMedicamento(registro) {
 }
 
 function camRegistroTieneAlerta(registro) {
-  return camRegistroFueraDeRango(registro) || registroDespicheAsociadoAAlerta(registro) || alertaMismaFechaResidente(registro);
+  return alertaVitalMismoRegistro(registro) || registroDespicheAsociadoAAlerta(registro) || alertaMismaFechaResidente(registro);
 }
 
-function camRegistroFueraDeRango(registro) {
+function alertaVitalMismoRegistro(registro) {
+  return alertasSignosVitalesCam().some((alerta) => alerta.residente === registro.residente && alerta.fecha === registro.fecha);
+}
+
+function camRegistroFueraDeRangoCritico(registro) {
   const valores = extractCamVitals(registro.detalle);
-  if (valores.temp !== null && (valores.temp < UMBRALES_CICLOS.temp.normalLow || valores.temp > UMBRALES_CICLOS.temp.normalHigh)) return true;
-  if (valores.spo2 !== null && (valores.spo2 < UMBRALES_CICLOS.spo2.normalLow || valores.spo2 > UMBRALES_CICLOS.spo2.normalHigh)) return true;
-  if (valores.pad !== null && (valores.pad < UMBRALES_CICLOS.pad.normalLow || valores.pad > UMBRALES_CICLOS.pad.normalHigh)) return true;
-  if (valores.hgt !== null && (valores.hgt < UMBRALES_CICLOS.hgt.normalLow || valores.hgt > UMBRALES_CICLOS.hgt.normalHigh)) return true;
-  return false;
+  if (valores.temp !== null && (valores.temp >= 37.8 || valores.temp <= 35.5)) return { variable: "Temperatura", valor: `${valores.temp} C`, accion: "Repetir control e informar a Enfermero si persiste." };
+  if (valores.spo2 !== null && valores.spo2 <= 91) return { variable: "Saturacion", valor: `${valores.spo2} %`, accion: "Verificar equipo, evaluar signos respiratorios y avisar inmediatamente." };
+  if (valores.pad !== null && (valores.pad >= 100 || valores.pad <= 50)) return { variable: "Presion arterial", valor: `PAD ${valores.pad} mmHg`, accion: "Repetir toma de presion y avisar a Enfermero o Directora Tecnica." };
+  if (valores.hgt !== null && (valores.hgt >= 200 || valores.hgt <= 60)) return { variable: "HGT / Glucosa", valor: `${valores.hgt} mg/dL`, accion: "Repetir HGT, revisar indicaciones y avisar a Enfermero." };
+  return null;
 }
 
 function extractCamVitals(detalle) {
@@ -1198,8 +1210,7 @@ function registroDespicheAsociadoAAlerta(registro) {
 }
 
 function alertaMismaFechaResidente(registro) {
-  const registroDate = parseRegistroDate(registro.fecha);
-  return ALERTAS.some((alerta) => alerta.residente === registro.residente && sameDay(parseRegistroDate(alerta.fecha), registroDate));
+  return ALERTAS.some((alerta) => alerta.residente === registro.residente && alerta.fecha === registro.fecha);
 }
 
 function sameDay(a, b) {
@@ -1222,6 +1233,13 @@ function parseRegistroDate(value) {
   }
   const [year, month, day] = parts;
   return new Date(year, month - 1, day, hour || 0, minute || 0);
+}
+
+function parseDateInput(value, endOfDay = false) {
+  if (!value) return null;
+  const [year, month, day] = String(value).split("-").map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(year, month - 1, day, endOfDay ? 23 : 0, endOfDay ? 59 : 0, endOfDay ? 59 : 0);
 }
 
 function residentAlerts(resident) {
@@ -1329,18 +1347,45 @@ function renderFormulariosAdmin(view) {
 
 function renderRegistrosUsuarios(view) {
   view.innerHTML = page("Registros usuarios", "Revision administrativa de registros ingresados por perfiles.") +
+    registrosUsuariosExportPanel() +
     registrosUsuariosTable();
+  bindRegistrosUsuariosExport();
 }
 
-function registrosUsuariosTable() {
-  const rows = [
+function registrosUsuariosRows() {
+  return [
     ...REGISTROS_CAM.map((row, index) => ({ source: "cam", index, row, origen: "CAM" })),
     ...REGISTROS_PRO.map((row, index) => ({ source: "pro", index, row, origen: row.rol || "Profesional" })),
     ...REGISTROS_NUTRI.map((row, index) => ({ source: "nutri", index, row, origen: "Nutricionista" }))
   ].sort((a, b) => parseRegistroDate(b.row.fecha) - parseRegistroDate(a.row.fecha));
+}
+
+function registrosUsuariosExportPanel() {
+  return `<div class="card">
+    <h2>Exportar registros</h2>
+    <div class="grid3">
+      <div><label>Alcance</label><select id="registrosExportMode">
+        <option value="all" ${state.registrosExportMode === "all" ? "selected" : ""}>Todos los registros</option>
+        <option value="range" ${state.registrosExportMode === "range" ? "selected" : ""}>Rango de fechas</option>
+      </select></div>
+      <div><label>Desde</label><input id="registrosExportFrom" type="date" value="${state.registrosExportFrom}"></div>
+      <div><label>Hasta</label><input id="registrosExportTo" type="date" max="${todayIso()}" value="${state.registrosExportTo}"></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn primary" id="exportRegistrosExcel">Descargar Excel</button>
+    </div>
+  </div>`;
+}
+
+function registrosUsuariosTable() {
+  const rows = registrosUsuariosRows();
+  const pageSize = 15;
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  state.registrosPage = Math.min(Math.max(1, state.registrosPage), totalPages);
+  const pageRows = rows.slice((state.registrosPage - 1) * pageSize, state.registrosPage * pageSize);
   return `<div class="card table-wrap"><table>
     <thead><tr><th>Fecha</th><th>Residente</th><th>Origen</th><th>Usuario</th><th>Cuidadora</th><th>Detalle</th><th>Estado</th><th>Accion</th></tr></thead>
-    <tbody>${rows.map(({ source, index, row, origen }) => `<tr>
+    <tbody>${pageRows.map(({ source, index, row, origen }) => `<tr>
       <td>${row.fecha || ""}</td>
       <td>${row.residente || ""}</td>
       <td>${origen}</td>
@@ -1350,7 +1395,76 @@ function registrosUsuariosTable() {
       <td>${row.editable ? '<span class="badge green">Editable</span>' : '<span class="badge red">Bloqueado</span>'}</td>
       <td><button class="btn secondary" onclick="startRecordEdit('${source}', ${index})">Editar</button></td>
     </tr>`).join("")}</tbody>
-  </table></div>`;
+  </table>
+  ${registrosPagination(totalPages)}
+  </div>`;
+}
+
+function registrosPagination(totalPages) {
+  return `<div class="pagination">
+    <button class="btn secondary" ${state.registrosPage === 1 ? "disabled" : ""} onclick="setRegistrosPage(${state.registrosPage - 1})">Anterior</button>
+    ${Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => `<button class="btn ${state.registrosPage === page ? "primary" : "secondary"}" onclick="setRegistrosPage(${page})">${page}</button>`).join("")}
+    <button class="btn secondary" ${state.registrosPage === totalPages ? "disabled" : ""} onclick="setRegistrosPage(${state.registrosPage + 1})">Siguiente</button>
+  </div>`;
+}
+
+function setRegistrosPage(page) {
+  state.registrosPage = page;
+  renderView();
+}
+
+function bindRegistrosUsuariosExport() {
+  const mode = $("registrosExportMode");
+  const from = $("registrosExportFrom");
+  const to = $("registrosExportTo");
+  const button = $("exportRegistrosExcel");
+  if (!mode || !from || !to || !button) return;
+  mode.addEventListener("change", () => {
+    state.registrosExportMode = mode.value;
+  });
+  from.addEventListener("input", () => {
+    state.registrosExportFrom = from.value;
+  });
+  to.addEventListener("input", () => {
+    state.registrosExportTo = to.value;
+  });
+  button.addEventListener("click", () => exportRegistrosUsuariosExcel());
+}
+
+function exportRegistrosUsuariosExcel() {
+  const rows = registrosUsuariosRows().filter(({ row }) => {
+    if (state.registrosExportMode === "all") return true;
+    const from = parseDateInput(state.registrosExportFrom);
+    const to = parseDateInput(state.registrosExportTo, true);
+    if (!from || !to || from > to) return false;
+    const date = parseRegistroDate(row.fecha);
+    return date >= from && date <= to;
+  }).map(({ row, origen }) => ({
+    fecha: row.fecha || "",
+    residente: row.residente || "",
+    origen,
+    usuario: row.usuario || row.rol || "nutricion@hogarantu.cl",
+    cuidadora: row.cuidadora || "",
+    detalle: row.detalle || row.registro || row.observacion || "",
+    estado: row.editable ? "Editable" : "Bloqueado"
+  }));
+  if (state.registrosExportMode === "range") {
+    const from = parseDateInput(state.registrosExportFrom);
+    const to = parseDateInput(state.registrosExportTo, true);
+    if (!from || !to || from > to || to > new Date()) {
+      openModal("Exportar registros", "Debe seleccionar un rango de fechas valido y sin fechas futuras.");
+      return;
+    }
+  }
+  const periodo = state.registrosExportMode === "all" ? "Todos" : `${state.registrosExportFrom} a ${state.registrosExportTo}`;
+  const html = `<!doctype html><html><head><meta charset="utf-8"></head><body>
+    <h1>Registros de usuarios</h1>
+    <p>Periodo: ${periodo}</p>
+    ${excelTable("Registros usuarios", rows, [
+      ["Fecha", "fecha"], ["Residente", "residente"], ["Origen", "origen"], ["Usuario", "usuario"], ["Cuidadora", "cuidadora"], ["Detalle", "detalle"], ["Estado", "estado"]
+    ])}
+  </body></html>`;
+  downloadHtmlExcel(html, `registros_usuarios_${state.registrosExportMode === "all" ? "todos" : `${state.registrosExportFrom}_${state.registrosExportTo}`}.xls`);
 }
 
 function startRecordEdit(source, index, returnView = "registros", requireEditable = false) {
@@ -1362,6 +1476,7 @@ function startRecordEdit(source, index, returnView = "registros", requireEditabl
   state.editReturnView = returnView;
   const detalle = row.detalle || row.registro || row.observacion || "";
   const userReadonly = requireEditable && source === "pro" ? "readonly" : "";
+  const hasDespiche = source === "cam" || source === "pro";
   $("view").innerHTML = page("Editar registro de usuario", editRecordHelpText(requireEditable)) +
     `<div class="form-section">
       <div class="grid3">
@@ -1370,6 +1485,7 @@ function startRecordEdit(source, index, returnView = "registros", requireEditabl
         <div><label>Usuario / rol</label><input id="editRegistroUsuario" value="${recordUserValue(row, source)}" ${userReadonly}></div>
         ${source === "cam" ? `<div><label>Cuidadora</label><input id="editRegistroCuidadora" value="${row.cuidadora || ""}"></div>` : ""}
       </div>
+      ${hasDespiche ? editDespicheFields(row) : ""}
       <label>Detalle del registro</label>
       <textarea id="editRegistroDetalle">${detalle}</textarea>
       <div class="form-actions">
@@ -1377,6 +1493,34 @@ function startRecordEdit(source, index, returnView = "registros", requireEditabl
         <button class="btn ghost" onclick="go('${returnView}')">Cancelar</button>
       </div>
     </div>`;
+}
+
+function editDespicheFields(row) {
+  const tipo = row.despicheTipo || inferDespicheTipo(row.detalle || row.registro || "");
+  const resultado = row.despicheResultado || inferDespicheResultado(row.detalle || row.registro || "");
+  return `<div class="grid3">
+    <div><label>Tipo diuresis/deposicion</label><select id="editDespicheTipo">
+      <option ${tipo === "Diuresis" ? "selected" : ""}>Diuresis</option>
+      <option ${tipo === "Deposicion" ? "selected" : ""}>Deposicion</option>
+    </select></div>
+    <div><label>Resultado</label><select id="editDespicheResultado">
+      <option ${resultado === "Si" ? "selected" : ""}>Si</option>
+      <option ${resultado === "No" ? "selected" : ""}>No</option>
+    </select></div>
+  </div>`;
+}
+
+function inferDespicheTipo(text) {
+  return String(text || "").toLowerCase().includes("deposicion") ? "Deposicion" : "Diuresis";
+}
+
+function inferDespicheResultado(text) {
+  const match = String(text || "").match(/(?:Diuresis|Deposicion):\s*(Si|No)/i);
+  return match ? normalizeSiNo(match[1]) : "Si";
+}
+
+function normalizeSiNo(value) {
+  return String(value || "").toLowerCase() === "no" ? "No" : "Si";
 }
 
 function recordUserValue(row, source) {
@@ -1400,10 +1544,14 @@ function saveRecordEdit(source, index) {
     if (source === "cam") {
       row.usuario = $("editRegistroUsuario").value;
       row.cuidadora = $("editRegistroCuidadora").value;
-      row.detalle = $("editRegistroDetalle").value;
+      row.despicheTipo = $("editDespicheTipo").value;
+      row.despicheResultado = $("editDespicheResultado").value;
+      row.detalle = applyDespicheToText($("editRegistroDetalle").value, row.despicheTipo, row.despicheResultado);
     } else if (source === "pro") {
       row.usuario = $("editRegistroUsuario").value;
-      row.registro = $("editRegistroDetalle").value;
+      row.despicheTipo = $("editDespicheTipo").value;
+      row.despicheResultado = $("editDespicheResultado").value;
+      row.registro = applyDespicheToText($("editRegistroDetalle").value, row.despicheTipo, row.despicheResultado);
     } else {
       row.observacion = $("editRegistroDetalle").value;
     }
@@ -1411,6 +1559,15 @@ function saveRecordEdit(source, index) {
     state.view = state.editReturnView || "registros";
     renderShell();
   });
+}
+
+function applyDespicheToText(text, tipo, resultado) {
+  const detail = String(text || "").trim();
+  const replacement = `${tipo}: ${resultado}.`;
+  if (/(Diuresis|Deposicion):\s*(Si|No)\.?/i.test(detail)) {
+    return detail.replace(/(Diuresis|Deposicion):\s*(Si|No)\.?/i, replacement);
+  }
+  return `${detail}${detail ? " " : ""}${replacement}`;
 }
 
 function recordArray(source) {
@@ -1430,7 +1587,7 @@ function renderAlertas(view) {
 }
 
 function todasLasAlertas() {
-  return [...ALERTAS, ...alertasCiclosInsuficientes(), ...alertasDespicheConsecutivo()];
+  return [...ALERTAS, ...alertasSignosVitalesCam(), ...alertasCiclosInsuficientes(), ...alertasDespicheConsecutivo()];
 }
 
 function alertasAbiertas() {
@@ -1647,6 +1804,25 @@ function alertasCiclosInsuficientes() {
     });
   });
   return alertas;
+}
+
+function alertasSignosVitalesCam() {
+  return REGISTROS_CAM
+    .filter((registro) => String(registro.tipo || "").toLowerCase().includes("control de ciclos"))
+    .map((registro) => {
+      const alerta = camRegistroFueraDeRangoCritico(registro);
+      if (!alerta) return null;
+      return {
+        fecha: registro.fecha,
+        residente: registro.residente,
+        variable: alerta.variable,
+        valor: alerta.valor,
+        nivel: "Alerta",
+        color: alerta.variable === "Saturacion" ? "red" : "yellow",
+        accion: alerta.accion
+      };
+    })
+    .filter(Boolean);
 }
 
 function alertasDespicheConsecutivo() {
@@ -1910,6 +2086,16 @@ function reportPersonalData(resident) {
     </div>`;
 }
 
+function reportBrandHeader() {
+  return `<div class="report-brand">
+    <div></div>
+    <div class="report-brand-mark">
+      <img src="./assets/antu-logo.png" alt="Hogar Antu">
+      <span>www.hogarantu.cl</span>
+    </div>
+  </div>`;
+}
+
 function reportBitacoraLastFive(resident, limit = null) {
   const data = reportData(resident, Number(state.pdfPeriodDays || state.pdfGeneratedDays || 15));
   const entries = Number(limit) ? data.entries.slice(0, limit) : data.entries;
@@ -1941,6 +2127,7 @@ function reportMedicationTable(rows, limit = null) {
 function pdfPreview(resident, days) {
   const data = reportData(resident, days);
   return `<div class="card report-preview">
+    ${reportBrandHeader()}
     <h2>Vista previa reporte</h2>
     <div class="grid3">
       ${field("Residente", resident.nombre)}
@@ -2023,6 +2210,7 @@ function generatedPdfSection() {
       <button class="btn primary" onclick="printGeneratedPdf()">Guardar / imprimir PDF</button>
     </div>
     <div class="print-report">
+      ${reportBrandHeader()}
       <h1>Reporte residente</h1>
       <p class="report-meta">${resident.nombre} | Ultimos ${days} dias | Emision 2026-06-17</p>
       ${reportPersonalData(resident)}

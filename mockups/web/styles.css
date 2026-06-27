@@ -401,6 +401,14 @@ button.btn {
   gap: 8px;
 }
 
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
+}
+
 .notice {
   border-left: 5px solid #d79a00;
   background: #fff8e5;
@@ -611,6 +619,28 @@ th {
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 14px;
+}
+
+.report-brand {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.report-brand-mark {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+  color: var(--teal-dark);
+  font-weight: 800;
+  font-size: 12px;
+}
+
+.report-brand-mark img {
+  width: 150px;
+  max-width: 35vw;
+  height: auto;
 }
 
 .modal-backdrop {
